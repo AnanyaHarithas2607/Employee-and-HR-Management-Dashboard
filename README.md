@@ -1,93 +1,280 @@
-````markdown
-# 🏢 Employee & HR Management System
+# Employee & HR Management System
 
-[![Database](https://img.shields.io/badge/Database-MySQL%208.0%2B-blue.svg)](https://www.mysql.com/)
-[![Frontend](https://img.shields.io/badge/Frontend-Streamlit-red.svg)](https://streamlit.io/)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-yellow.svg)](https://www.python.org/)
-[![Normalization](https://img.shields.io/badge/Normalization-3NF-success.svg)](docs/NORMALIZATION.md)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+A full-stack academic **Employee & Human Resources Management System** built with **Python, Streamlit, Plotly, MySQL, and SQLite**.
 
-An interactive **Employee & Human Resources Management System** built using **Python, Streamlit, Plotly, MySQL, and SQLite**.
-
-The system combines a normalized relational database with an interactive dashboard for employee management, attendance, leave, payroll, performance, training, recruitment, project allocation, and analytics.
+The system provides an interactive dashboard for managing and analysing employee information, departments, projects, attendance, leave, payroll, performance, training, and recruitment. The database is designed using **EER modelling, functional dependencies, and normalization up to Third Normal Form (3NF)**.
 
 ---
 
-## ✨ Features
+## Overview
 
-### 🗄️ Database Management
+The Employee & HR Management System is designed to provide a centralized platform for HR-related operations and analytics.
 
-- 12 normalized relational entities:
-  - `HR_MANAGER`
-  - `DEPARTMENT`
-  - `EMPLOYEE`
-  - `PROJECT`
-  - `EMPLOYEE_PROJECT`
-  - `ATTENDANCE`
-  - `LEAVE`
-  - `PAYROLL`
-  - `PERFORMANCE_REVIEW`
-  - `TRAINING`
-  - `EMPLOYEE_TRAINING`
-  - `RECRUITMENT`
-- Primary and foreign keys
-- Referential integrity and cascade rules
-- Many-to-many relationships using bridge tables
-- MySQL 8.0+ support
-- Portable SQLite database fallback
+The application combines:
 
-### 📊 Interactive Dashboard
+- A normalized relational database
+- MySQL database connectivity
+- Portable SQLite database support
+- Interactive Streamlit dashboard
+- Plotly-based data visualization
+- Employee search and filtering
+- CRUD operations
+- Payroll and attendance analytics
+- Project and training management
+- Recruitment analysis
+- Interactive SQL execution
+- Academic database documentation
 
-- Executive KPI dashboard
-- Employee directory and search
-- Multi-criteria employee filtering
-- Employee registration
-- Department budget analysis
-- Project staffing and employee roles
-- Project hours tracking
-- Attendance analytics
-- Leave management and approval
-- Payroll and salary analysis
-- Performance review analytics
-- Training analytics
-- Recruitment funnel
-- Interactive Plotly visualizations
-- Interactive SQL Studio
-
-### 🔎 Employee Search
-
-The employee directory supports filtering by:
-
-- Employee ID
-- Employee name
-- Department
-- Job title
-- Salary range
-- Other employee attributes
-
-### 💾 Dual Database Architecture
-
-The application supports:
-
-**MySQL**
-- Primary relational database
-- Full database deployment
-- Complete schema and seed data
-
-**SQLite**
-- Portable local database
-- No MySQL server required
-- Useful for demonstrations, testing, and offline execution
-
-If MySQL is unavailable, the application can use the portable SQLite database.
+The application supports both **MySQL** and a **portable SQLite fallback**, allowing the project to run even when a MySQL server is not available.
 
 ---
 
-## 📐 Database Design
+## Key Features
 
-The database follows **1NF, 2NF, and 3NF** normalization principles.
+### Employee Management
 
-### Functional Dependencies
+- View employee records
+- Search employees using multiple criteria
+- Filter employees by department, job title, and salary
+- Register new employees
+- View employee-related information
+
+### Department Management
+
+- View department information
+- Analyse department-wise employee distribution
+- Compare department budgets with payroll expenditure
+- Monitor budget utilization
+
+### Project Management
+
+- View active projects
+- Track employee-project assignments
+- View employee roles within projects
+- Track hours contributed by employees
+- Analyse project staffing
+
+### Attendance Management
+
+- View attendance records
+- Analyse attendance status
+- Monitor attendance compliance
+- Analyse work patterns
+
+### Leave Management
+
+- View leave requests
+- Analyse leave categories and statuses
+- Approve or manage leave requests
+- View leave-related statistics
+
+### Payroll Management
+
+- View payroll information
+- Analyse salary distributions
+- Compare salaries across departments
+- Analyse allowances and deductions
+- Perform net salary reconciliation
+
+### Performance Management
+
+- View employee performance reviews
+- Analyse performance ratings
+- Identify high-performing employees
+- Visualize rating distributions
+
+### Training Management
+
+- View training programs
+- Track employee participation
+- Analyse assessment scores
+- Analyse training performance and ROI
+
+### Recruitment Management
+
+- Track candidates through recruitment stages
+- Analyse recruitment conversion
+- Visualize the recruitment funnel
+- Analyse candidate progression
+
+### Interactive SQL Studio
+
+The dashboard includes an SQL interface that allows users to:
+
+- Execute SQL queries
+- View query results interactively
+- Run predefined academic queries
+- Analyse data directly from the database
+
+---
+
+## Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Python | Application development |
+| Streamlit | Interactive web dashboard |
+| Plotly | Data visualization |
+| MySQL | Primary relational database |
+| SQLite | Portable database fallback |
+| Pandas | Data processing |
+| SQL | Database design and queries |
+| Git & GitHub | Version control |
+
+---
+
+## System Architecture
+
+```text
+                         ┌──────────────────────┐
+                         │      User / HR       │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │  Streamlit Dashboard │
+                         │       app.py         │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Database Connection  │
+                         │   connection.py      │
+                         └──────────┬───────────┘
+                                    │
+                       ┌────────────┴────────────┐
+                       │                         │
+                       ▼                         ▼
+              ┌─────────────────┐      ┌─────────────────┐
+              │      MySQL      │      │     SQLite      │
+              │  Primary Engine │      │ Portable Fallback│
+              └─────────────────┘      └─────────────────┘
+                       │                         │
+                       └────────────┬────────────┘
+                                    ▼
+                         ┌──────────────────────┐
+                         │   Queries & Analytics│
+                         │      queries.py      │
+                         └──────────────────────┘
+````
+
+---
+
+## Database Design
+
+The database contains **12 relational entities**:
+
+```text
+HR_MANAGER
+DEPARTMENT
+EMPLOYEE
+PROJECT
+EMPLOYEE_PROJECT
+ATTENDANCE
+LEAVE
+PAYROLL
+PERFORMANCE_REVIEW
+TRAINING
+EMPLOYEE_TRAINING
+RECRUITMENT
+```
+
+### Entity Relationships
+
+```text
+                         HR_MANAGER
+                              │
+                              │ 1:M
+                              ▼
+                         DEPARTMENT
+                              │
+                              │ 1:M
+                              ▼
+                          EMPLOYEE
+                         /   │   \
+                        /    │    \
+                       ▼     ▼     ▼
+                ATTENDANCE  LEAVE  PAYROLL
+                             
+                          EMPLOYEE
+                         /        \
+                        /          \
+                       ▼            ▼
+              EMPLOYEE_PROJECT  EMPLOYEE_TRAINING
+                    │                 │
+                    ▼                 ▼
+                 PROJECT           TRAINING
+
+                    EMPLOYEE
+                       │
+                       ▼
+              PERFORMANCE_REVIEW
+
+                    RECRUITMENT
+```
+
+The complete EER design and relationship cardinalities are documented in:
+
+```text
+docs/EER_DIAGRAM.md
+```
+
+---
+
+## Normalization
+
+The database follows normalization principles through **1NF, 2NF, and 3NF**.
+
+### First Normal Form — 1NF
+
+* Attributes contain atomic values.
+* Repeating and multi-valued relationships are separated.
+* Many-to-many relationships are represented using bridge tables.
+
+Examples:
+
+```text
+EMPLOYEE_PROJECT
+EMPLOYEE_TRAINING
+```
+
+### Second Normal Form — 2NF
+
+The design eliminates partial dependencies on composite keys.
+
+For example:
+
+```text
+(Employee_ID, Project_ID) → Employee_Role
+(Employee_ID, Project_ID) → Hours_Worked
+```
+
+Both attributes depend on the complete composite key.
+
+### Third Normal Form — 3NF
+
+Transitive dependencies are separated into independent relations.
+
+For example:
+
+```text
+Employee_ID → Department_ID
+Department_ID → Department_Name
+```
+
+Department-specific information is therefore maintained in the `DEPARTMENT` table rather than being unnecessarily repeated in `EMPLOYEE`.
+
+Detailed normalization analysis is available in:
+
+```text
+docs/NORMALIZATION.md
+```
+
+---
+
+## Functional Dependencies
+
+The project documents the following functional dependencies:
 
 ```text
 A  → B
@@ -100,7 +287,7 @@ AF → I
 AF → J
 A  → D
 AF → B
-````
+```
 
 ### Attribute Mapping
 
@@ -117,33 +304,7 @@ I = Employee_Role
 J = Hours_Worked
 ```
 
-### Normalization
-
-**1NF**
-
-* All attributes contain atomic values.
-* Many-to-many relationships are decomposed into bridge tables such as `EMPLOYEE_PROJECT` and `EMPLOYEE_TRAINING`.
-
-**2NF**
-
-* Non-key attributes depend on the complete composite key.
-* For example:
-
-```text
-(Employee_ID, Project_ID) → Employee_Role
-(Employee_ID, Project_ID) → Hours_Worked
-```
-
-**3NF**
-
-* Transitive dependencies are separated into independent relations.
-
-```text
-Employee_ID → Department_ID
-Department_ID → Department_Name
-```
-
-Detailed normalization documentation is available in:
+The complete mathematical analysis and normalization proof are provided in:
 
 ```text
 docs/NORMALIZATION.md
@@ -151,178 +312,224 @@ docs/NORMALIZATION.md
 
 ---
 
-## 📊 Dashboard Modules
-
-### 1. Executive Dashboard
-
-Displays:
-
-* Total employees
-* Monthly payroll
-* Active projects
-* Attendance statistics
-* Average performance rating
-
-### 2. Employee Management
-
-Provides:
-
-* Employee directory
-* Employee search
-* Employee filtering
-* Salary filtering
-* Employee registration
-
-### 3. Department & Budget
-
-Provides:
-
-* Department budgets
-* Payroll expenditure
-* Budget utilization
-* Employee distribution
-
-### 4. Project Management
-
-Tracks:
-
-* Employee-project assignments
-* Employee roles
-* Project staffing
-* Hours worked
-* Project budgets
-
-### 5. Attendance & Leave
-
-Provides:
-
-* Attendance breakdown
-* Check-in status
-* Leave requests
-* Leave approval workflow
-
-### 6. Payroll
-
-Provides:
-
-* Salary distributions
-* Basic salary analysis
-* Allowances
-* Deductions
-* Net salary reconciliation
-
-### 7. Performance & Training
-
-Provides:
-
-* Performance rating distributions
-* Top-performing employees
-* Training participation
-* Training assessment analysis
-* Training ROI metrics
-
-### 8. Recruitment
-
-Provides a recruitment funnel:
-
-```text
-Application
-    ↓
-Interview
-    ↓
-Offer
-    ↓
-Acceptance
-```
-
-### 9. SQL Studio
-
-Allows users to:
-
-* Execute SQL queries
-* View query results
-* Run predefined academic queries
-* Analyze database tables interactively
-
----
-
-## 📁 Project Structure
+## Project Structure
 
 ```text
 Employee-and-HR-Management-Dashboard/
 │
-├── employee-hr-management-system/
-│   ├── app.py
-│   ├── README.md
-│   ├── requirements.txt
-│   ├── run.bat
-│   ├── run.ps1
-│   ├── LICENSE
-│   │
-│   ├── database/
-│   │   ├── __init__.py
-│   │   ├── connection.py
-│   │   ├── queries.py
-│   │   └── hr_management_portable.db
-│   │
-│   ├── sql/
-│   │   ├── 01_schema.sql
-│   │   ├── 02_seed_data.sql
-│   │   └── 03_complex_queries.sql
-│   │
-│   ├── docs/
-│   │   ├── NORMALIZATION.md
-│   │   ├── EER_DIAGRAM.md
-│   │   └── ASSIGNMENT_REPORT.md
-│   │
-│   └── tests/
-│       └── test_system.py
-│
-└── README.md
+└── employee-hr-management-system/
+    │
+    ├── app.py
+    ├── README.md
+    ├── requirements.txt
+    ├── LICENSE
+    ├── run.bat
+    ├── run.ps1
+    │
+    ├── database/
+    │   ├── __init__.py
+    │   ├── connection.py
+    │   ├── queries.py
+    │   └── hr_management_portable.db
+    │
+    ├── sql/
+    │   ├── 01_schema.sql
+    │   ├── 02_seed_data.sql
+    │   └── 03_complex_queries.sql
+    │
+    ├── docs/
+    │   ├── NORMALIZATION.md
+    │   ├── EER_DIAGRAM.md
+    │   └── ASSIGNMENT_REPORT.md
+    │
+    └── tests/
+        └── test_system.py
 ```
 
 ---
 
-## 🚀 Quick Start
+## Database Files
+
+### `01_schema.sql`
+
+Contains the database schema and table definitions, including:
+
+* Tables
+* Primary keys
+* Foreign keys
+* Constraints
+* Relationships
+* Indexes
+
+### `02_seed_data.sql`
+
+Contains sample data used to populate the database for demonstration and testing.
+
+### `03_complex_queries.sql`
+
+Contains the predefined complex SQL queries used for the academic database requirements.
+
+---
+
+## SQL Queries
+
+The project includes 10 complex SQL queries covering different database concepts.
+
+### Query 1 — Department Budget vs Salary Expenditure
+
+Analyses department budgets against actual salary expenditure.
+
+Concepts:
+
+* `LEFT JOIN`
+* `GROUP BY`
+* Aggregate functions
+* Calculated percentages
+
+### Query 2 — Cross-Department Project Workload
+
+Analyses project staffing and employee hours.
+
+Concepts:
+
+* Many-to-many relationships
+* Bridge-table aggregation
+* `JOIN`
+* `GROUP BY`
+
+### Query 3 — Top Performers by Department
+
+Ranks employees according to their performance within departments.
+
+Concepts:
+
+* CTE
+* Window functions
+* `DENSE_RANK()`
+* `PARTITION BY`
+
+### Query 4 — Training Program ROI
+
+Analyses training participation and assessment performance.
+
+Concepts:
+
+* Multiple joins
+* Aggregation
+* `HAVING`
+* Average calculations
+
+### Query 5 — Monthly Payroll Reconciliation
+
+Analyses payroll components including:
+
+* Basic salary
+* Allowances
+* Deductions
+* Net salary
+
+### Query 6 — Employee 360-Degree Profile
+
+Combines information from multiple entities to provide a broader employee profile.
+
+### Query 7 — Attendance Compliance
+
+Analyses attendance and work patterns using conditional aggregation.
+
+### Query 8 — Leave Request Analysis
+
+Analyses leave categories, statuses, and approval information.
+
+### Query 9 — Recruitment Conversion Funnel
+
+Tracks candidate progression through recruitment stages.
+
+### Query 10 — Salary Equity Analysis
+
+Analyses:
+
+* Minimum salary
+* Maximum salary
+* Average salary
+* Salary variation
+* Department-level salary differences
+
+---
+
+## Quick Start
 
 ### Prerequisites
 
-* Python 3.10+
-* Git
-* MySQL 8.0+ *(optional when using SQLite fallback)*
+Install the following:
 
-### 1. Clone the Repository
+* Python 3.10 or newer
+* Git
+* MySQL 8.0+ *(optional)*
+
+MySQL is optional because the application includes a portable SQLite database.
+
+---
+
+## 1. Clone the Repository
 
 ```bash
 git clone https://github.com/AnanyaHarithas2607/Employee-and-HR-Management-Dashboard.git
+```
+
+Move into the application directory:
+
+```bash
 cd Employee-and-HR-Management-Dashboard/employee-hr-management-system
 ```
 
-### 2. Install Dependencies
+---
 
-#### Windows
+## 2. Create a Virtual Environment
+
+### Windows
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
 ```
 
-#### macOS / Linux
+Activate it:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### macOS / Linux
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
+
+---
+
+## 3. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Dashboard
+On Windows, if `python` is mapped to another Python installation, use:
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+---
+
+## 4. Run the Application
+
+### Recommended
 
 ```bash
 python -m streamlit run app.py
 ```
 
-Or on Windows:
+On Windows, you can also use the included launcher:
 
 ```text
 run.bat
@@ -334,7 +541,7 @@ or:
 .\run.ps1
 ```
 
-The dashboard will open at:
+The Streamlit dashboard will be available at:
 
 ```text
 http://localhost:8501
@@ -342,16 +549,9 @@ http://localhost:8501
 
 ---
 
-## 🗄️ MySQL Configuration
+# MySQL Configuration
 
-MySQL is optional because the project includes a portable SQLite database.
-
-To use MySQL:
-
-1. Start your MySQL server.
-2. Open the dashboard.
-3. Enter the MySQL connection details.
-4. Click **Connect & Initialize MySQL**.
+The application can connect to a local MySQL database.
 
 Typical configuration:
 
@@ -363,33 +563,46 @@ Database: hr_management
 Password: <your MySQL password>
 ```
 
-The SQL initialization scripts are:
+After starting MySQL:
+
+1. Launch the Streamlit application.
+2. Enter the MySQL connection details.
+3. Connect to the database.
+4. Initialize the database if required.
+
+The database schema and seed files are available under:
 
 ```text
-sql/01_schema.sql
-sql/02_seed_data.sql
+sql/
 ```
 
-They can also be executed manually:
+### Manual MySQL Initialization
+
+If required, initialize the schema:
 
 ```bash
 mysql -u root -p < sql/01_schema.sql
+```
+
+Then load the sample data:
+
+```bash
 mysql -u root -p < sql/02_seed_data.sql
 ```
 
 ---
 
-## 💾 SQLite Portable Mode
+# SQLite Portable Mode
 
-The project includes:
+The project includes a portable SQLite database:
 
 ```text
 database/hr_management_portable.db
 ```
 
-SQLite mode allows the dashboard to run without a MySQL server.
+SQLite mode allows the project to run without a separate MySQL server.
 
-It is useful for:
+This is useful for:
 
 * Demonstrations
 * Academic evaluation
@@ -397,62 +610,37 @@ It is useful for:
 * Testing
 * Quick setup
 
+The application can use the SQLite database when MySQL is unavailable.
+
 ---
 
-## 🧪 Testing
+# Testing
 
-System tests are available in:
+System tests are provided in:
 
 ```text
 tests/test_system.py
 ```
 
-Run:
+Run the test file using:
 
 ```bash
 python tests/test_system.py
 ```
 
----
+On Windows:
 
-## 📚 SQL Assignment Queries
-
-The project includes 10 complex SQL queries in:
-
-```text
-sql/03_complex_queries.sql
+```powershell
+py tests/test_system.py
 ```
 
-The queries cover:
-
-1. Department budget vs salary expenditure
-2. Cross-department project workload
-3. Top performers ranked by department
-4. Training program ROI
-5. Monthly payroll reconciliation
-6. Employee 360-degree profile
-7. Attendance compliance
-8. Leave approval analysis
-9. Recruitment conversion funnel
-10. Salary equity and departmental salary spread
-
-SQL concepts demonstrated include:
-
-* `JOIN`
-* `LEFT JOIN`
-* `GROUP BY`
-* `HAVING`
-* Subqueries
-* Common Table Expressions
-* Window functions
-* Conditional aggregation
-* Aggregate functions
-
 ---
 
-## 📖 Documentation
+# Documentation
 
-### Normalization
+Additional project documentation is available in the `docs` directory.
+
+### Normalization Documentation
 
 ```text
 docs/NORMALIZATION.md
@@ -461,12 +649,12 @@ docs/NORMALIZATION.md
 Contains:
 
 * Functional dependencies
-* Attribute definitions
+* Attribute mapping
 * 1NF analysis
 * 2NF analysis
 * 3NF analysis
+* Normalization proof
 * Armstrong's axioms
-* Canonical cover analysis
 
 ### EER Diagram
 
@@ -474,7 +662,12 @@ Contains:
 docs/EER_DIAGRAM.md
 ```
 
-Contains the Entity-Relationship design and relationship cardinalities.
+Contains:
+
+* Entity relationships
+* Cardinalities
+* EER representation
+* Database structure
 
 ### Assignment Report
 
@@ -482,63 +675,106 @@ Contains the Entity-Relationship design and relationship cardinalities.
 docs/ASSIGNMENT_REPORT.md
 ```
 
-Contains the detailed academic project report.
+Contains the detailed academic documentation for the project.
 
 ---
 
-## 🔐 Security
+# Dashboard Preview
 
-Do not commit real database credentials to GitHub.
+Add screenshots of the application here after uploading them to the repository.
 
-Keep actual MySQL passwords in a local `.env` file when environment-based configuration is used.
+Example:
 
-Use `.env.example` as the configuration template.
+```text
+docs/images/dashboard.png
+docs/images/employee-directory.png
+docs/images/payroll.png
+docs/images/sql-studio.png
+```
+
+Recommended screenshots:
+
+1. Executive Dashboard
+2. Employee Directory
+3. Department & Budget Analysis
+4. Payroll Dashboard
+5. Recruitment Funnel
+6. SQL Studio
 
 ---
 
-## 🛠️ Technologies Used
+# Security
 
-| Technology | Purpose                      |
-| ---------- | ---------------------------- |
-| Python     | Application logic            |
-| Streamlit  | Interactive web dashboard    |
-| Plotly     | Data visualization           |
-| MySQL      | Relational database          |
-| SQLite     | Portable database fallback   |
-| SQL        | Database design and querying |
-| Pandas     | Data processing              |
-| Git/GitHub | Version control              |
+Do not commit actual database passwords or private credentials to GitHub.
+
+If environment variables are used, keep actual credentials in a local `.env` file.
+
+Example configuration:
+
+```text
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=hr_management
+```
+
+Do not upload a `.env` file containing real credentials.
 
 ---
 
-## 🎓 Academic Objectives
+# Academic Requirements Covered
 
 This project demonstrates:
 
-* Relational database design
-* EER modelling
-* Functional dependencies
-* Database normalization
-* 1NF, 2NF, and 3NF
-* Primary and foreign keys
-* Referential integrity
-* Many-to-many relationships
-* SQL joins and aggregation
-* Subqueries
-* CTEs
-* Window functions
-* CRUD operations
-* Database connectivity
-* Data visualization
-* Interactive dashboard development
+* [x] EER modelling
+* [x] Relational database design
+* [x] Functional dependencies
+* [x] First Normal Form
+* [x] Second Normal Form
+* [x] Third Normal Form
+* [x] Primary keys
+* [x] Foreign keys
+* [x] Referential integrity
+* [x] One-to-many relationships
+* [x] Many-to-many relationships
+* [x] Bridge tables
+* [x] CRUD operations
+* [x] SQL joins
+* [x] Aggregation
+* [x] Subqueries
+* [x] Common Table Expressions
+* [x] Window functions
+* [x] Conditional aggregation
+* [x] Database connectivity
+* [x] Data visualization
+* [x] Interactive dashboard
+* [x] Automated testing
+* [x] Academic documentation
 
 ---
 
-## 📄 License
+# Future Enhancements
 
-This project is licensed under the MIT License.
+Possible future improvements include:
 
-See [LICENSE](LICENSE) for details.
+* Role-based authentication
+* HR administrator login
+* Advanced employee analytics
+* Exporting reports to PDF/Excel
+* Email notifications
+* Advanced recruitment analytics
+* Additional dashboard filters
+* Cloud database deployment
+* Deployment to a cloud hosting platform
 
-```
-```
+---
+
+# Repository
+
+GitHub:
+
+[https://github.com/AnanyaHarithas2607/Employee-and-HR-Management-Dashboard](https://github.com/AnanyaHarithas2607/Employee-and-HR-Management-Dashboard)
+
+---
+
