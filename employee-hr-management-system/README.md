@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-yellow.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An enterprise-grade, academic **Employee & Human Resources Management System** built with **MySQL** and **Python (Streamlit + Plotly)**. Designed from foundational database normalization principles (1NF, 2NF, 3NF) and the Enhanced Entity-Relationship (EER) model, this project satisfies all requirements for a university-level graded database assignment and portfolio showcase.
+An enterprise-grade, academic **Employee & Human Resources Management System** built with **MySQL** and **Python (Streamlit + Plotly)**. Designed from foundational database normalization principles (1NF, 2NF, 3NF) and the Enhanced Entity-Relationship (EER) model, this project satisfies all requirements for a university-level graded database assignment and portfolio showcase
 
 ---
 
