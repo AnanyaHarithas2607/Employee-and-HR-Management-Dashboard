@@ -6,7 +6,7 @@ Supports MySQL 8.0+ with seamless zero-configuration fallback to SQLite.
 import os
 import time
 import sqlite3
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 import pandas as pd
 from dotenv import load_dotenv
 
@@ -62,14 +62,33 @@ def try_connect_mysql(config: Optional[Dict[str, Any]] = None) -> Tuple[bool, st
             autocommit=True
         )
 
-        # Check if tables exist
+        # Check if tables exist; initialize schema+seed on a fresh/empty database
+        init_errors: List[str] = []
         with conn.cursor() as cur:
             cur.execute("SHOW TABLES;")
             tables = cur.fetchall()
-            if len(tables) < 5:
-                _initialize_mysql_db(conn)
+            if len(tables) < 12:
+                init_errors = _initialize_mysql_db(conn)
+                cur.execute("SHOW TABLES;")
+                tables = cur.fetchall()
 
         conn.close()
+
+        # Don't report success if initialization was supposed to create the
+        # 12-table schema but didn't actually get there.
+        if len(tables) < 12:
+            detail = "; ".join(init_errors[:3]) if init_errors else "no tables were created and no SQL errors were reported"
+            _cached_status = {
+                "engine": "SQLite (Dual Engine Fallback)",
+                "is_mysql": False,
+                "status": "MySQL Offline — Running on Embedded Portable Engine",
+                "details": f"Local database: {os.path.basename(SQLITE_DB_PATH)}",
+                "error": f"MySQL schema initialization incomplete ({len(tables)}/12 tables): {detail}",
+                "color": "orange"
+            }
+            _last_status_check = time.time()
+            return False, f"Connected to MySQL, but schema setup failed ({len(tables)}/12 tables created): {detail}"
+
         DB_CONFIG = cfg
         _cached_status = {
             "engine": "MySQL 8.0+",
@@ -93,32 +112,94 @@ def try_connect_mysql(config: Optional[Dict[str, Any]] = None) -> Tuple[bool, st
         return False, f"MySQL connection failed: {str(e)}"
 
 
-def _initialize_mysql_db(conn):
-    """Executes schema and seed scripts on MySQL connection."""
+def _split_sql_statements(text: str) -> List[str]:
+    """Splits a SQL script into individual statements on ';', respecting
+    single-quoted string literals.
+
+    A naive `text.split(";")` breaks as soon as any stored VARCHAR/TEXT value
+    happens to contain a semicolon (e.g. a review comment like 'Good work;
+    keep it up.') -- it chops one INSERT statement into two invalid
+    fragments and both fail. This walks the text and only treats ';' as a
+    separator when not inside a quoted string, and treats '' as an escaped
+    quote inside a string per standard SQL.
+    """
+    statements: List[str] = []
+    current: List[str] = []
+    in_string = False
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "'":
+            if in_string and i + 1 < n and text[i + 1] == "'":
+                current.append("''")
+                i += 2
+                continue
+            in_string = not in_string
+            current.append(ch)
+            i += 1
+            continue
+        if ch == ";" and not in_string:
+            stmt = "".join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    tail = "".join(current).strip()
+    if tail:
+        statements.append(tail)
+    return statements
+
+
+def _strip_sql_line_comments(text: str) -> str:
+    """Removes '--' line comments before statement splitting.
+
+    Without this, a leading comment block (e.g. a file header) stays glued
+    to the next real statement when the file is split on ';'. That made the
+    "skip DROP DATABASE / CREATE DATABASE / USE" guard below silently fail
+    to match (the chunk started with '--', not 'DROP DATABASE'), so the
+    schema file's own `DROP DATABASE IF EXISTS hr_management;` line was
+    actually being executed against the live connection -- immediately
+    wiping out the database this function was in the middle of populating.
+    """
+    kept_lines = [line for line in text.splitlines() if not line.strip().startswith("--")]
+    return "\n".join(kept_lines)
+
+
+def _initialize_mysql_db(conn) -> List[str]:
+    """Executes schema and seed scripts on MySQL connection.
+
+    Returns a list of human-readable errors for any statement that failed,
+    so callers can surface real problems instead of assuming success.
+    """
+    errors: List[str] = []
     with conn.cursor() as cur:
         if os.path.exists(SCHEMA_PATH):
             with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-                content = f.read()
-                statements = [stmt.strip() for stmt in content.split(";") if stmt.strip()]
+                content = _strip_sql_line_comments(f.read())
+                statements = _split_sql_statements(content)
                 for stmt in statements:
                     if stmt.upper().startswith("DROP DATABASE") or stmt.upper().startswith("CREATE DATABASE") or stmt.upper().startswith("USE "):
                         continue
                     try:
                         cur.execute(stmt)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        errors.append(f"[schema] {stmt[:60]}... -> {e}")
 
         if os.path.exists(SEED_PATH):
             with open(SEED_PATH, "r", encoding="utf-8") as f:
-                content = f.read()
-                statements = [stmt.strip() for stmt in content.split(";") if stmt.strip()]
+                content = _strip_sql_line_comments(f.read())
+                statements = _split_sql_statements(content)
                 for stmt in statements:
                     if stmt.upper().startswith("USE "):
                         continue
                     try:
                         cur.execute(stmt)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        errors.append(f"[seed] {stmt[:60]}... -> {e}")
+    return errors
 
 
 def _init_sqlite_db():
@@ -286,13 +367,19 @@ def run_query(query: str, params: Optional[Tuple] = None) -> pd.DataFrame:
     status = get_connection_status()
     if status["is_mysql"]:
         import pymysql
+        # NOTE: intentionally NOT using cursorclass=DictCursor here.
+        # pandas.read_sql() with a raw DBAPI2 connection assumes each fetched
+        # row is a plain tuple/sequence; with pymysql's DictCursor each row
+        # is a dict instead, and pandas ends up reading dict.keys() as the
+        # row values -- every returned "row" becomes the column names
+        # repeated, silently corrupting every chart/table/KPI in the app.
+        # The default tuple cursor gives pandas real values.
         conn = pymysql.connect(
             host=DB_CONFIG["host"],
             port=DB_CONFIG["port"],
             user=DB_CONFIG["user"],
             password=DB_CONFIG["password"],
-            database=DB_CONFIG["database"],
-            cursorclass=pymysql.cursors.DictCursor
+            database=DB_CONFIG["database"]
         )
         try:
             return pd.read_sql(query, conn, params=params)
@@ -304,6 +391,8 @@ def run_query(query: str, params: Optional[Tuple] = None) -> pd.DataFrame:
         try:
             # SQLite string concatenation compatibility
             adapted_query = query.replace("CONCAT(e.first_name, ' ', e.last_name)", "(e.first_name || ' ' || e.last_name)")
+            # SQLite uses '?' placeholders, not MySQL-style '%s'
+            adapted_query = adapted_query.replace("%s", "?")
             return pd.read_sql(adapted_query, conn, params=params)
         finally:
             conn.close()

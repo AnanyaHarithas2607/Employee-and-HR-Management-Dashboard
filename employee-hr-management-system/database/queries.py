@@ -68,7 +68,7 @@ def get_employees(department_id: Optional[int] = None, search_term: Optional[str
         params.extend([pattern, pattern, pattern, pattern])
 
     query += " ORDER BY e.employee_id ASC"
-    return run_query(query)
+    return run_query(query, tuple(params) if params else None)
 
 
 def add_employee(first_name: str, last_name: str, gender: str, dob: str, email: str, 
