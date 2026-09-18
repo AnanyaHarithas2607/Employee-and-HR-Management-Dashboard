@@ -8,6 +8,31 @@ Powered by MySQL 8.0+ / Dual Engine Architecture, Streamlit & Plotly
 import datetime
 import os
 import streamlit as st
+st.markdown("""
+<style>
+    .main {
+        padding-top: 1.5rem;
+    }
+    h1, h2, h3 {
+        font-family: 'Georgia', serif;
+        letter-spacing: -0.5px;
+    }
+    div[data-testid="stMetric"] {
+        background-color: #F5EFE6;
+        border: 1px solid #E0D5C3;
+        border-radius: 10px;
+        padding: 12px;
+    }
+    div[data-testid="stMetric"] label,
+    div[data-testid="stMetric"] div {
+        color: #8B6F52 !important;
+    }
+    .stButton>button {
+        border-radius: 8px;
+        border: 1px solid #2E7D6B;
+    }
+</style>
+""", unsafe_allow_html=True)
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -296,62 +321,6 @@ elif menu == "👥 Employee Directory & CRUD":
         use_container_width=True,
         hide_index=True
     )
-
-    st.markdown("---")
-
-    # Add Employee Form
-    with st.expander("➕ Register New Employee (INSERT Transaction)", expanded=False):
-        st.markdown("##### Fill Employee Details (Enforces Foreign Keys on `DEPARTMENT` and `HR_MANAGER`)")
-        hr_df = get_hr_managers()
-        hr_options = {row["hr_name"]: row["hr_id"] for _, row in hr_df.iterrows()}
-
-        with st.form("add_employee_form"):
-            form_c1, form_c2, form_c3 = st.columns(3)
-            with form_c1:
-                first_name = st.text_input("First Name", placeholder="e.g. John")
-                last_name = st.text_input("Last Name", placeholder="e.g. Doe")
-                gender = st.selectbox("Gender", ["Male", "Female", "Non-binary", "Other"])
-                dob = st.date_input("Date of Birth", value=datetime.date(1995, 1, 1))
-
-            with form_c2:
-                email = st.text_input("Corporate Email", placeholder="e.g. john.doe@company.com")
-                phone = st.text_input("Phone Number", placeholder="e.g. +1-555-0199")
-                address = st.text_input("Residential Address", placeholder="e.g. 123 University Ave")
-                hire_date = st.date_input("Hire Date", value=datetime.date.today())
-
-            with form_c3:
-                salary = st.number_input("Annual Salary ($)", min_value=10000.0, max_value=500000.0, value=85000.0, step=1000.0)
-                job_title = st.text_input("Job Title", placeholder="e.g. Data Systems Engineer")
-                dept_keys = [k for k in dept_options.keys() if k != "All Departments"]
-                sel_dept = st.selectbox("Assigned Department", dept_keys)
-                sel_hr = st.selectbox("Assigned HR Manager", list(hr_options.keys()))
-
-            submitted = st.form_submit_button("Submit & Commit Employee Record", use_container_width=True)
-            if submitted:
-                if not first_name or not last_name or not email or not job_title:
-                    st.error("Please provide all required fields (First Name, Last Name, Email, Job Title).")
-                else:
-                    success, msg = add_employee(
-                        first_name=first_name,
-                        last_name=last_name,
-                        gender=gender,
-                        dob=str(dob),
-                        email=email,
-                        phone=phone,
-                        address=address,
-                        hire_date=str(hire_date),
-                        salary=float(salary),
-                        job_title=job_title,
-                        department_id=int(dept_options[sel_dept]),
-                        hr_id=int(hr_options[sel_hr])
-                    )
-                    if success:
-                        st.success(f"Employee {first_name} {last_name} registered successfully!")
-                        st.rerun()
-                    else:
-                        st.error(msg)
-
-
 # -----------------------------------------------------------------------------
 # 3. DEPARTMENTS & MANAGERS
 # -----------------------------------------------------------------------------
@@ -368,7 +337,7 @@ elif menu == "🏛️ Departments & Managers":
     with col3:
         st.metric("Combined Payroll Commitments", f"${dept_df['total_payroll'].sum():,.2f}")
 
-    st.markdown("---")
+   
 
     # Card overview of departments
     d_cols = st.columns(len(dept_df) if len(dept_df) <= 5 else 3)
