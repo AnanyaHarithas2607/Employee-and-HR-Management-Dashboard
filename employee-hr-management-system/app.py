@@ -1,891 +1,812 @@
 """
-=============================================================================
-EMPLOYEE & HR MANAGEMENT SYSTEM — INTERACTIVE DASHBOARD
-Powered by MySQL 8.0+ / Dual Engine Architecture, Streamlit & Plotly
-=============================================================================
+Employee & HR Management System
+Upgraded Streamlit dashboard:
+- responsive dashboard UI
+- searchable/filterable data views
+- real CRUD workflows
+- exports
+- read-only SQL studio
+- schema explorer + relationship viewer
+- lightweight demo RBAC
 """
 
-import datetime
-import os
-import streamlit as st
-st.markdown("""
-<style>
-    .main {
-        padding-top: 1.5rem;
-    }
-    h1, h2, h3 {
-        font-family: 'Georgia', serif;
-        letter-spacing: -0.5px;
-    }
-    div[data-testid="stMetric"] {
-        background-color: #F5EFE6;
-        border: 1px solid #E0D5C3;
-        border-radius: 10px;
-        padding: 12px;
-    }
-    div[data-testid="stMetric"] label,
-    div[data-testid="stMetric"] div {
-        color: #8B6F52 !important;
-    }
-    .stButton>button {
-        border-radius: 8px;
-        border: 1px solid #2E7D6B;
-    }
-</style>
-""", unsafe_allow_html=True)
+import datetime as dt
+import re
+import io
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-# Database interface imports
-from database.connection import (
-    get_connection_status,
-    try_connect_mysql,
-    run_query,
-    execute_action,
-    DB_CONFIG
-)
+from database.connection import get_connection_status, try_connect_mysql, DB_CONFIG, run_query
 from database.queries import (
-    get_executive_kpis,
-    get_employees,
-    add_employee,
-    get_departments,
-    get_projects,
-    get_project_assignments,
-    assign_employee_to_project,
-    get_attendance_records,
-    log_attendance,
-    get_leave_requests,
-    update_leave_status,
-    get_payroll_records,
-    get_performance_reviews,
-    add_performance_review,
-    get_trainings,
-    get_training_enrollments,
-    get_recruitment_candidates,
-    get_hr_managers,
+    get_executive_kpis, get_employees, add_employee, update_employee, delete_employee,
+    get_departments, get_projects, add_project, update_project_status,
+    get_project_assignments, assign_employee_to_project,
+    get_attendance_records, log_attendance,
+    get_leave_requests, add_leave_request, update_leave_status,
+    get_payroll_records, add_payroll_record,
+    get_performance_reviews, add_performance_review,
+    get_trainings, add_training, get_training_enrollments, enroll_employee_training,
+    get_recruitment_candidates, add_recruitment_candidate, update_recruitment_status,
+    get_hr_managers, get_schema_metadata, get_relationships, get_table_data,
     COMPLEX_QUERIES_CATALOG
 )
 
-# Set page configuration
+# ---------------------------------------------------------------------------
+# Page + theme
+# ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Employee & HR Management System",
+    page_title="HR Management Hub",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Custom CSS styling
 st.markdown("""
 <style>
-    /* Metric card enhancements */
-    .metric-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        color: #f8fafc;
-        margin-bottom: 15px;
-    }
-    .metric-title {
-        font-size: 0.85rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #94a3b8;
-    }
-    .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #38bdf8;
-        margin-top: 5px;
-    }
-    .metric-sub {
-        font-size: 0.8rem;
-        color: #64748b;
-        margin-top: 4px;
-    }
-    /* Section headers */
-    .section-header {
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin-top: 10px;
-        margin-bottom: 20px;
-        color: #e2e8f0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    /* Status pills */
-    .badge-active { background-color: #065f46; color: #34d399; padding: 3px 8px; border-radius: 9999px; font-size: 0.75rem; }
-    .badge-pending { background-color: #854d0e; color: #fde047; padding: 3px 8px; border-radius: 9999px; font-size: 0.75rem; }
+:root { --border:#243044; --panel:#111827; --muted:#94a3b8; }
+[data-testid="stAppViewContainer"] { background:#080d16; }
+[data-testid="stSidebar"] { background:#0b111b; border-right:1px solid #1e293b; }
+.block-container { padding-top:1.4rem; padding-bottom:2rem; max-width:1500px; }
+h1,h2,h3 { letter-spacing:-.02em; }
+h1 { font-size:2rem !important; }
+h2 { font-size:1.35rem !important; }
+h3 { font-size:1rem !important; }
+div[data-testid="stMetric"] {
+  background:linear-gradient(135deg,#111827,#0d1522);
+  border:1px solid #243044; border-radius:12px; padding:14px;
+}
+div[data-testid="stMetricValue"] { font-size:1.55rem; }
+div[data-testid="stMetricLabel"] { color:#94a3b8; }
+.stButton>button,.stDownloadButton>button {
+  border-radius:8px; font-weight:600; min-height:38px;
+}
+div[data-testid="stExpander"] { border:1px solid #243044; border-radius:10px; }
+.small-muted { color:#94a3b8; font-size:.82rem; }
+.hero {
+  padding:20px 22px; border:1px solid #243044; border-radius:16px;
+  background:linear-gradient(120deg,#111827,#0d1726);
+  margin-bottom:16px;
+}
+.hero-title { font-size:1.55rem; font-weight:800; color:#f8fafc; }
+.hero-sub { color:#94a3b8; margin-top:4px; font-size:.88rem; }
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def flash(ok, msg):
+    (st.success if ok else st.error)(msg)
+    if ok:
+        st.cache_data.clear()
 
-# -----------------------------------------------------------------------------
-# SIDEBAR: Engine Status & Navigation
-# -----------------------------------------------------------------------------
+def csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8")
+
+def download_df(df: pd.DataFrame, filename: str, label="⬇️ Export CSV"):
+    st.download_button(
+        label=label,
+        data=csv_bytes(df),
+        file_name=filename,
+        mime="text/csv",
+        use_container_width=False,
+    )
+
+def employee_maps():
+    df = get_employees()
+    names = {r["full_name"]: int(r["employee_id"]) for _, r in df.iterrows()}
+    return df, names
+
+def dept_map():
+    d = get_departments()
+    return d, {r["department_name"]: int(r["department_id"]) for _, r in d.iterrows()}
+
+def hr_map():
+    h = get_hr_managers()
+    return h, {r["hr_name"]: int(r["hr_id"]) for _, r in h.iterrows()}
+
+def status_badge(value):
+    v = str(value)
+    cls = {
+        "Approved":"🟢", "Present":"🟢", "Remote":"🔵", "Completed":"🟢",
+        "Pending":"🟡", "Scheduled":"🟡", "Planning":"🟡",
+        "Rejected":"🔴", "Absent":"🔴", "On-Leave":"🟠",
+        "Ongoing":"🔵", "Completed":"🟢", "Cancelled":"🔴"
+    }.get(v, "⚪")
+    return f"{cls} {v}"
+
+def require_role(role):
+    roles = {"Viewer":0, "HR Manager":1, "Administrator":2}
+    current = st.session_state.get("role", "Administrator")
+    return roles[current] >= roles[role]
+
+def safe_sql(sql):
+    """Allow only a single read-only SQL statement."""
+    q = sql.strip()
+    if not q:
+        raise ValueError("Enter a query.")
+    if q.count(";") > 1 or (";" in q and not q.endswith(";")):
+        raise ValueError("Only one SQL statement is allowed.")
+    q = q.rstrip(";").strip()
+    first = re.match(r"^\s*(\w+)", q, flags=re.I)
+    keyword = first.group(1).upper() if first else ""
+    allowed = {"SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"}
+    if keyword not in allowed:
+        raise ValueError("SQL Studio is read-only. Use SELECT, WITH, SHOW, DESCRIBE, DESC or EXPLAIN.")
+    forbidden = re.search(
+        r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE|GRANT|REVOKE|CALL|SET|USE|ATTACH|DETACH|PRAGMA)\b",
+        q, flags=re.I
+    )
+    if forbidden:
+        raise ValueError(f"Read-only SQL blocked: {forbidden.group(1).upper()}")
+    return q
+
+def render_df(df, height=420):
+    if df is None or df.empty:
+        st.info("No records match the current filters.")
+        return
+    st.dataframe(df, use_container_width=True, hide_index=True, height=height)
+
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
 with st.sidebar:
-    st.image("https://img.icons8.com/isometric/100/database.png", width=60)
-    st.title("HR & Database Hub")
-    st.caption("Graded Assignment — 3NF Normalization")
-
-    st.markdown("---")
-    # Connection status widget
+    st.markdown("## 🏢 HR Management Hub")
+    st.caption("Normalized Employee & HR platform • 3NF")
     status = get_connection_status()
     if status["is_mysql"]:
-        st.success(f"🟢 **{status['engine']}**\n\n`{status['details']}`")
+        st.success(f"🟢 {status['engine']}\n\n{status['details']}")
     else:
-        st.warning(f"🟡 **{status['engine']}**\n\n`{status['details']}`")
+        st.warning(f"🟡 {status['engine']}\n\n{status['details']}")
 
-    # MySQL Configuration Expander
-    with st.expander("⚙️ Configure MySQL Connection"):
-        st.caption("Connect directly to your local or remote MySQL Server instance:")
-        mysql_host = st.text_input("Host", value=DB_CONFIG["host"])
-        mysql_port = st.number_input("Port", value=DB_CONFIG["port"], step=1)
-        mysql_user = st.text_input("User", value=DB_CONFIG["user"])
-        mysql_pass = st.text_input("Password", value=DB_CONFIG["password"], type="password")
-        mysql_db = st.text_input("Database Name", value=DB_CONFIG["database"])
-
-        if st.button("Connect & Initialize MySQL", use_container_width=True):
-            test_cfg = {
-                "host": mysql_host,
-                "port": int(mysql_port),
-                "user": mysql_user,
-                "password": mysql_pass,
-                "database": mysql_db
-            }
-            ok, msg = try_connect_mysql(test_cfg)
-            if ok:
-                st.success("Connected to MySQL successfully!")
-                st.rerun()
-            else:
-                st.error(msg)
+    st.markdown("### Access")
+    role = st.selectbox(
+        "Demo role",
+        ["Administrator", "HR Manager", "Viewer"],
+        index=["Administrator","HR Manager","Viewer"].index(st.session_state.get("role","Administrator")),
+    )
+    st.session_state["role"] = role
+    st.caption({
+        "Administrator":"Full data-management access",
+        "HR Manager":"HR records + approvals; no destructive employee deletion",
+        "Viewer":"Read-only analytics and exports",
+    }[role])
 
     st.markdown("---")
     menu = st.radio(
-        "Navigation",
+        "Workspace",
         [
-            "📊 Executive Overview",
-            "👥 Employee Directory & CRUD",
-            "🏛️ Departments & Managers",
-            "💼 Projects & Staffing (AF → I, J)",
-            "⏱️ Attendance & Leave Portal",
-            "💰 Payroll & Compensation",
+            "📊 Overview",
+            "👥 Employees",
+            "🏛️ Departments",
+            "💼 Projects",
+            "⏱️ Attendance & Leave",
+            "💰 Payroll",
             "🌟 Performance & Training",
-            "🎯 Recruitment Funnel",
-            "⚡ Interactive SQL Studio",
-            "📜 3NF Normalization Theory"
-        ]
+            "🎯 Recruitment",
+            "🗄️ Schema Explorer",
+            "⚡ SQL Studio",
+            "📈 Reports & Export",
+            "📜 3NF / Functional Dependencies",
+        ],
     )
+
+    with st.expander("⚙️ MySQL connection"):
+        host = st.text_input("Host", DB_CONFIG["host"])
+        port = st.number_input("Port", value=DB_CONFIG["port"], step=1)
+        user = st.text_input("User", DB_CONFIG["user"])
+        password = st.text_input("Password", DB_CONFIG["password"], type="password")
+        database = st.text_input("Database", DB_CONFIG["database"])
+        if st.button("Connect / initialize MySQL", use_container_width=True):
+            ok, msg = try_connect_mysql({
+                "host":host, "port":int(port), "user":user,
+                "password":password, "database":database
+            })
+            flash(ok, msg)
+            if ok: st.rerun()
 
     st.markdown("---")
-    st.markdown(
-        "<div style='font-size:0.75rem; color:#64748b; text-align:center;'>"
-        "Designed for Academic Submission & GitHub Showcase<br>"
-        "Normalized Relational Architecture (3NF)"
-        "</div>",
-        unsafe_allow_html=True
-    )
+    st.caption("Built for academic demo + GitHub showcase")
 
+# ---------------------------------------------------------------------------
+# Overview
+# ---------------------------------------------------------------------------
+if menu == "📊 Overview":
+    k = get_executive_kpis()
+    st.markdown("""
+    <div class="hero">
+      <div class="hero-title">Executive HR Dashboard</div>
+      <div class="hero-sub">One place for workforce, payroll, attendance, projects and talent analytics.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# 1. EXECUTIVE OVERVIEW
-# -----------------------------------------------------------------------------
-if menu == "📊 Executive Overview":
-    st.markdown("<div class='section-header'>📊 Executive HR Dashboard & KPI Analytics</div>", unsafe_allow_html=True)
-    
-    kpis = get_executive_kpis()
-    if "error" in kpis:
-        st.error(f"Error loading KPIs: {kpis['error']}")
+    if "error" in k:
+        st.error(k["error"])
     else:
-        # 4 Metric Cards
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric(label="Total Employees", value=kpis["total_employees"], delta="Headcount")
-        with col2:
-            st.metric(label="Annualized Payroll", value=f"${kpis['total_payroll']:,.0f}", delta="Annualized")
-        with col3:
-            st.metric(label="Active Projects", value=f"{kpis['active_projects']} / {kpis['total_projects']}", delta="Execution")
-        with col4:
-            st.metric(label="Attendance Compliance", value=f"{kpis['attendance_rate']}%", delta="Present/Remote")
-        with col5:
-            st.metric(label="Avg Performance", value=f"{kpis['avg_rating']:.2f} / 5.0", delta="Rating")
+        cols = st.columns(6)
+        metrics = [
+            ("Employees", k["total_employees"], "Current headcount"),
+            ("Avg Salary", f"${k['avg_salary']:,.0f}", "Annual average"),
+            ("Payroll", f"${k['total_payroll']:,.0f}", "Annual salary base"),
+            ("Projects", f"{k['active_projects']} / {k['total_projects']}", "Ongoing / total"),
+            ("Attendance", f"{k['attendance_rate']:.1f}%", "Present + Remote"),
+            ("Avg Rating", f"{k['avg_rating']:.2f} / 5", "Performance reviews"),
+        ]
+        for c, (label,val,sub) in zip(cols,metrics):
+            with c: st.metric(label,val,help=sub)
 
-    st.markdown("---")
-
-    # High-level charts
-    ch_col1, ch_col2 = st.columns([3, 2])
-    
-    dept_df = get_departments()
-    with ch_col1:
-        st.subheader("Department Budget Allocation vs. Total Salary Spend")
-        if not dept_df.empty:
-            fig_budget = go.Figure()
-            fig_budget.add_trace(go.Bar(
-                x=dept_df["department_name"],
-                y=dept_df["budget"],
-                name="Allocated Budget ($)",
-                marker_color="#38bdf8"
-            ))
-            fig_budget.add_trace(go.Bar(
-                x=dept_df["department_name"],
-                y=dept_df["total_payroll"],
-                name="Annual Payroll Spend ($)",
-                marker_color="#f43f5e"
-            ))
-            fig_budget.update_layout(
-                barmode="group",
-                margin=dict(l=20, r=20, t=30, b=20),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig_budget, use_container_width=True)
-
-    with ch_col2:
-        st.subheader("Workforce Distribution by Department")
-        if not dept_df.empty:
-            fig_pie = px.pie(
-                dept_df,
-                names="department_name",
-                values="employee_count",
-                hole=0.45,
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
-            fig_pie.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-    st.markdown("---")
-    # Quick Summary Tables
-    t_col1, t_col2 = st.columns(2)
-    with t_col1:
-        st.subheader("Active Projects Status")
-        proj_df = get_projects()
-        if not proj_df.empty:
-            st.dataframe(
-                proj_df[["project_name", "client_name", "status", "budget", "team_size"]],
-                use_container_width=True,
-                hide_index=True
-            )
-    with t_col2:
-        st.subheader("Recent Leave Requests")
-        leave_df = get_leave_requests()
-        if not leave_df.empty:
-            st.dataframe(
-                leave_df[["employee_name", "leave_type", "start_date", "end_date", "approval_status"]].head(6),
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-# -----------------------------------------------------------------------------
-# 2. EMPLOYEE DIRECTORY & CRUD
-# -----------------------------------------------------------------------------
-elif menu == "👥 Employee Directory & CRUD":
-    st.markdown("<div class='section-header'>👥 Employee Directory & Workforce Records</div>", unsafe_allow_html=True)
-    
-    # Filter controls
-    f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
-    dept_df = get_departments()
-    dept_options = {"All Departments": None}
-    for _, row in dept_df.iterrows():
-        dept_options[row["department_name"]] = row["department_id"]
-
-    with f_col1:
-        selected_dept_label = st.selectbox("Filter by Department", list(dept_options.keys()))
-        selected_dept_id = dept_options[selected_dept_label]
-
-    with f_col2:
-        search_query = st.text_input("🔍 Search by Name, Title, or Email")
-
-    emp_df = get_employees(department_id=selected_dept_id, search_term=search_query)
-
-    with f_col3:
-        st.metric(label="Filtered Records", value=len(emp_df))
-
-    # Display Employee Data Table
-    display_cols = ["employee_id", "full_name", "job_title", "department_name", "salary", "hire_date", "email", "phone_number", "hr_manager"]
-    st.dataframe(
-        emp_df[display_cols].rename(columns={
-            "employee_id": "ID",
-            "full_name": "Employee Name",
-            "job_title": "Job Title",
-            "department_name": "Department",
-            "salary": "Salary ($)",
-            "hire_date": "Hire Date",
-            "email": "Email",
-            "phone_number": "Phone",
-            "hr_manager": "HR Partner"
-        }),
-        use_container_width=True,
-        hide_index=True
-    )
-# -----------------------------------------------------------------------------
-# 3. DEPARTMENTS & MANAGERS
-# -----------------------------------------------------------------------------
-elif menu == "🏛️ Departments & Managers":
-    st.markdown("<div class='section-header'>🏛️ Departmental Hierarchy & Managerial Oversight</div>", unsafe_allow_html=True)
-    
-    dept_df = get_departments()
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Operational Units", len(dept_df))
-    with col2:
-        st.metric("Combined Budget", f"${dept_df['budget'].sum():,.2f}")
-    with col3:
-        st.metric("Combined Payroll Commitments", f"${dept_df['total_payroll'].sum():,.2f}")
-
-   
-
-    # Card overview of departments
-    d_cols = st.columns(len(dept_df) if len(dept_df) <= 5 else 3)
-    for i, (_, dept) in enumerate(dept_df.iterrows()):
-        col_idx = i % (len(d_cols))
-        with d_cols[col_idx]:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">{dept['department_name']}</div>
-                <div class="metric-value">{dept['employee_count']} <span style='font-size:1rem;color:#94a3b8;'>staff</span></div>
-                <div style='margin-top:10px; font-size:0.85rem; color:#cbd5e1;'>
-                    <b>Manager:</b> {dept['manager_name']}<br>
-                    <b>Location:</b> {dept['location']}<br>
-                    <b>Budget:</b> ${dept['budget']:,.0f}<br>
-                    <b>Payroll:</b> ${dept['total_payroll']:,.0f} ({dept['budget_utilized_pct']}%)
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.subheader("HR Leadership Team (`HR_MANAGER` Entity)")
-    hr_df = get_hr_managers()
-    st.dataframe(
-        hr_df.rename(columns={
-            "hr_id": "HR ID",
-            "hr_name": "Full Name",
-            "email": "Email",
-            "phone_number": "Phone",
-            "designation": "Designation",
-            "experience_years": "Experience (Years)",
-            "managed_employees": "Directly Managed Staff"
-        }),
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-# -----------------------------------------------------------------------------
-# 4. PROJECTS & STAFFING (AF -> I, AF -> J)
-# -----------------------------------------------------------------------------
-elif menu == "💼 Projects & Staffing (AF → I, J)":
-    st.markdown("<div class='section-header'>💼 Projects, Staffing & Work Allocations</div>", unsafe_allow_html=True)
-    st.info("💡 **Assignment Theory Focus**: Implements Functional Dependencies **$AF \\to I$** (`Employee_Role`) and **$AF \\to J$** (`Hours_Worked`) through the composite bridge table `EMPLOYEE_PROJECT`.")
-
-    proj_df = get_projects()
-    st.dataframe(
-        proj_df.rename(columns={
-            "project_id": "Project ID",
-            "project_name": "Project Name",
-            "client_name": "Client",
-            "budget": "Budget ($)",
-            "status": "Status",
-            "department_name": "Owning Dept",
-            "team_size": "Staffed Members",
-            "total_hours_worked": "Hours Logged"
-        }),
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.markdown("---")
-    p_col1, p_col2 = st.columns([1, 2])
-
-    proj_options = {row["project_name"]: row["project_id"] for _, row in proj_df.iterrows()}
-    with p_col1:
-        st.subheader("Filter Assignments")
-        sel_proj_name = st.selectbox("Select Project to Inspect", list(proj_options.keys()))
-        sel_proj_id = proj_options[sel_proj_name]
-
-    with p_col2:
-        assignments_df = get_project_assignments(project_id=sel_proj_id)
-        st.subheader(f"Staff Assigned to: {sel_proj_name}")
-        if assignments_df.empty:
-            st.warning("No staff members assigned to this project yet.")
-        else:
-            st.dataframe(
-                assignments_df[["employee_name", "job_title", "employee_role", "hours_worked", "assigned_date"]].rename(columns={
-                    "employee_name": "Employee",
-                    "job_title": "Primary Job Title",
-                    "employee_role": "Assigned Project Role (I)",
-                    "hours_worked": "Hours Logged (J)",
-                    "assigned_date": "Assigned Date"
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
-
-    # Assign Employee to Project Form
-    with st.expander("➕ Assign Employee to Project (M:N Bridge Record)", expanded=False):
-        emp_all = get_employees()
-        emp_options = {row["full_name"]: row["employee_id"] for _, row in emp_all.iterrows()}
-        with st.form("assign_project_form"):
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                assign_emp_name = st.selectbox("Select Employee", list(emp_options.keys()))
-            with c2:
-                assign_proj_name = st.selectbox("Select Project", list(proj_options.keys()))
-            with c3:
-                assign_role = st.text_input("Project Role (I)", placeholder="e.g. Lead QA Specialist")
-            with c4:
-                assign_hours = st.number_input("Hours Worked (J)", min_value=0.0, max_value=2000.0, value=40.0, step=5.0)
-
-            submitted = st.form_submit_button("Create Project Assignment", use_container_width=True)
-            if submitted:
-                if not assign_role:
-                    st.error("Please specify the role for this assignment.")
-                else:
-                    success, msg = assign_employee_to_project(
-                        employee_id=emp_options[assign_emp_name],
-                        project_id=proj_options[assign_proj_name],
-                        assigned_date=str(datetime.date.today()),
-                        role=assign_role,
-                        hours=float(assign_hours)
-                    )
-                    if success:
-                        st.success("Assignment created successfully!")
-                        st.rerun()
-                    else:
-                        st.error(msg)
-
-
-# -----------------------------------------------------------------------------
-# 5. ATTENDANCE & LEAVE PORTAL
-# -----------------------------------------------------------------------------
-elif menu == "⏱️ Attendance & Leave Portal":
-    st.markdown("<div class='section-header'>⏱️ Time, Attendance & Leave Management</div>", unsafe_allow_html=True)
-    
-    tab_att, tab_leave = st.tabs(["📅 Daily Attendance Logs", "🏖️ Leave Requests & Manager Approval"])
-
-    with tab_att:
-        att_df = get_attendance_records()
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Logs Recorded", len(att_df))
-        with col2:
-            present_cnt = len(att_df[att_df["attendance_status"].isin(["Present", "Remote"])])
-            st.metric("Present / Remote", present_cnt)
-        with col3:
-            leave_cnt = len(att_df[att_df["attendance_status"] == "On-Leave"])
-            st.metric("On-Leave", leave_cnt)
-        with col4:
-            absent_cnt = len(att_df[att_df["attendance_status"] == "Absent"])
-            st.metric("Absent", absent_cnt)
-
-        st.markdown("---")
-        st.dataframe(
-            att_df.rename(columns={
-                "attendance_id": "Log ID",
-                "date": "Date",
-                "employee_name": "Employee",
-                "department_name": "Department",
-                "check_in_time": "Check-In",
-                "check_out_time": "Check-Out",
-                "work_hours": "Hours Worked",
-                "attendance_status": "Status"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-
-        with st.expander("⏱️ Log Manual Attendance Check-in", expanded=False):
-            emp_all = get_employees()
-            emp_dict = {row["full_name"]: row["employee_id"] for _, row in emp_all.iterrows()}
-            with st.form("log_att_form"):
-                ac1, ac2, ac3, ac4 = st.columns(4)
-                with ac1:
-                    sel_emp = st.selectbox("Employee", list(emp_dict.keys()), key="att_emp")
-                    log_date = st.date_input("Date", value=datetime.date.today(), key="att_date")
-                with ac2:
-                    in_time = st.text_input("Check-In Time", value="09:00:00")
-                    out_time = st.text_input("Check-Out Time", value="17:30:00")
-                with ac3:
-                    w_hours = st.number_input("Work Hours", min_value=0.0, max_value=24.0, value=8.5, step=0.5)
-                with ac4:
-                    att_status = st.selectbox("Status", ["Present", "Remote", "Half-Day", "On-Leave", "Absent"])
-
-                if st.form_submit_button("Record Attendance", use_container_width=True):
-                    ok, msg = log_attendance(
-                        employee_id=emp_dict[sel_emp],
-                        date_val=str(log_date),
-                        check_in=in_time if att_status not in ["Absent", "On-Leave"] else None,
-                        check_out=out_time if att_status not in ["Absent", "On-Leave"] else None,
-                        hours=w_hours,
-                        status=att_status
-                    )
-                    if ok:
-                        st.success("Attendance entry logged!")
-                        st.rerun()
-                    else:
-                        st.error(msg)
-
-    with tab_leave:
-        st.subheader("Manage Time-off Requests")
-        leave_df = get_leave_requests()
-        
-        # Action workflow for pending requests
-        pending_leaves = leave_df[leave_df["approval_status"] == "Pending"]
-        if not pending_leaves.empty:
-            st.warning(f"⚠️ You have **{len(pending_leaves)}** pending leave request(s) awaiting managerial review:")
-            for _, r in pending_leaves.iterrows():
-                with st.container():
-                    lcol1, lcol2, lcol3, lcol4 = st.columns([3, 2, 1, 1])
-                    with lcol1:
-                        st.markdown(f"**{r['employee_name']}** ({r['department_name']}) — *{r['leave_type']} Leave*")
-                        st.caption(f"Reason: {r['reason']}")
-                    with lcol2:
-                        st.caption(f"Duration: {r['start_date']} to {r['end_date']}")
-                    with lcol3:
-                        if st.button("✅ Approve", key=f"app_{r['leave_id']}", use_container_width=True):
-                            update_leave_status(r["leave_id"], "Approved")
-                            st.success(f"Leave request #{r['leave_id']} approved!")
-                            st.rerun()
-                    with lcol4:
-                        if st.button("❌ Reject", key=f"rej_{r['leave_id']}", use_container_width=True):
-                            update_leave_status(r["leave_id"], "Rejected")
-                            st.info(f"Leave request #{r['leave_id']} rejected.")
-                            st.rerun()
-                st.markdown("---")
-        else:
-            st.success("All leave requests have been reviewed and processed.")
-
-        st.markdown("##### All Historical Leave Records")
-        st.dataframe(
-            leave_df.rename(columns={
-                "leave_id": "Leave ID",
-                "employee_name": "Employee Name",
-                "department_name": "Department",
-                "leave_type": "Leave Type",
-                "start_date": "From",
-                "end_date": "To",
-                "reason": "Reason",
-                "approval_status": "Approval Status"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-
-
-# -----------------------------------------------------------------------------
-# 6. PAYROLL & COMPENSATION
-# -----------------------------------------------------------------------------
-elif menu == "💰 Payroll & Compensation":
-    st.markdown("<div class='section-header'>💰 Payroll & Compensation Reconciliation</div>", unsafe_allow_html=True)
-    
-    payroll_df = get_payroll_records()
-    
-    c1, c2, c3, c4 = st.columns(4)
+    dept = get_departments()
+    projects = get_projects()
+    leave = get_leave_requests()
+    c1,c2 = st.columns([1.45,1])
     with c1:
-        st.metric("Total Net Disbursed", f"${payroll_df['net_salary'].sum():,.2f}")
+        st.subheader("Department budget vs payroll")
+        if not dept.empty:
+            fig = go.Figure()
+            fig.add_bar(x=dept.department_name, y=dept.budget, name="Budget")
+            fig.add_bar(x=dept.department_name, y=dept.total_payroll, name="Payroll")
+            fig.update_layout(barmode="group", height=360, margin=dict(l=10,r=10,t=20,b=70))
+            st.plotly_chart(fig, use_container_width=True)
     with c2:
-        st.metric("Basic Salaries", f"${payroll_df['basic_salary'].sum():,.2f}")
-    with c3:
-        st.metric("Company Allowances", f"${payroll_df['allowances'].sum():,.2f}")
-    with c4:
-        st.metric("Taxes / Deductions", f"${payroll_df['deductions'].sum():,.2f}")
+        st.subheader("Workforce distribution")
+        if not dept.empty:
+            fig = px.pie(dept, names="department_name", values="employee_count", hole=.5)
+            fig.update_layout(height=360, margin=dict(l=5,r=5,t=20,b=20))
+            st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("---")
-    
-    pcol1, pcol2 = st.columns([3, 2])
-    with pcol1:
-        st.subheader("Salary Distribution Across Workforce")
-        emp_df = get_employees()
-        fig_hist = px.histogram(
-            emp_df,
-            x="salary",
-            nbins=10,
-            color="department_name",
-            marginal="box",
-            labels={"salary": "Annual Salary ($)", "department_name": "Department"}
-        )
-        fig_hist.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_hist, use_container_width=True)
-
-    with pcol2:
-        st.subheader("Net Compensation by Department")
-        dept_payroll = payroll_df.groupby("department_name")["net_salary"].sum().reset_index()
-        fig_bar = px.bar(
-            dept_payroll,
-            x="department_name",
-            y="net_salary",
-            labels={"net_salary": "Net Salary Paid ($)", "department_name": "Department"},
-            color="net_salary",
-            color_continuous_scale="Viridis"
-        )
-        fig_bar.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    st.markdown("---")
-    st.subheader("Monthly Disbursement Records (`PAYROLL` Entity)")
+    st.subheader("Operational snapshot")
+    a,b,c = st.columns(3)
+    with a:
+        st.metric("Projects needing staffing", int((projects.team_size == 0).sum()) if not projects.empty else 0)
+    with b:
+        st.metric("Pending leave requests", int((leave.approval_status == "Pending").sum()) if not leave.empty else 0)
+    with c:
+        st.metric("Departments", len(dept))
     st.dataframe(
-        payroll_df.rename(columns={
-            "payroll_id": "Payroll ID",
-            "payment_date": "Payment Date",
-            "employee_name": "Employee Name",
-            "department_name": "Department",
-            "basic_salary": "Basic ($)",
-            "allowances": "Allowances ($)",
-            "deductions": "Deductions ($)",
-            "net_salary": "Net Salary ($)"
-        }),
-        use_container_width=True,
-        hide_index=True
+        projects[["project_name","client_name","status","department_name","team_size","total_hours_worked"]]
+        if not projects.empty else projects,
+        use_container_width=True, hide_index=True
     )
 
+# ---------------------------------------------------------------------------
+# Employees
+# ---------------------------------------------------------------------------
+elif menu == "👥 Employees":
+    st.markdown("## 👥 Employee Directory")
+    emp, names = employee_maps()
+    dept, dmap = dept_map()
+    hr, hmap = hr_map()
 
-# -----------------------------------------------------------------------------
-# 7. PERFORMANCE & TRAINING
-# -----------------------------------------------------------------------------
+    c1,c2,c3,c4 = st.columns([1.4,2.2,1,1])
+    with c1:
+        dept_filter = st.selectbox("Department", ["All"] + list(dmap.keys()))
+    with c2:
+        search = st.text_input("🔎 Search name, title or email")
+    with c3:
+        st.metric("Records", len(get_employees(
+            dmap.get(dept_filter), search or None
+        )))
+    with c4:
+        if not emp.empty: download_df(emp, "employees.csv")
+
+    filtered = get_employees(dmap.get(dept_filter), search or None)
+    display = filtered[["employee_id","full_name","job_title","department_name","salary","hire_date","email","phone_number","hr_manager"]].copy()
+    display.columns = ["ID","Employee","Job Title","Department","Salary","Hire Date","Email","Phone","HR Partner"]
+    render_df(display, 390)
+
+    if not filtered.empty:
+        st.markdown("---")
+        selected_name = st.selectbox("Employee profile", filtered["full_name"].tolist())
+        selected = filtered[filtered.full_name == selected_name].iloc[0]
+        p1,p2,p3,p4 = st.columns(4)
+        p1.metric("Employee ID", int(selected.employee_id))
+        p2.metric("Salary", f"${selected.salary:,.0f}")
+        p3.metric("Department", selected.department_name)
+        p4.metric("HR", selected.hr_manager)
+        st.caption(f"📧 {selected.email}  •  📞 {selected.phone_number}  •  📍 {selected.address}")
+
+    if require_role("HR Manager"):
+        with st.expander("➕ Add employee"):
+            with st.form("add_employee"):
+                r1,r2,r3 = st.columns(3)
+                first = r1.text_input("First name")
+                last = r2.text_input("Last name")
+                gender = r3.selectbox("Gender", ["Female","Male","Non-binary","Prefer not to say"])
+                r4,r5,r6 = st.columns(3)
+                dob = r4.date_input("Date of birth", dt.date(1998,1,1))
+                email = r5.text_input("Email")
+                phone = r6.text_input("Phone")
+                r7,r8,r9 = st.columns(3)
+                address = r7.text_input("Address")
+                hire = r8.date_input("Hire date", dt.date.today())
+                salary = r9.number_input("Annual salary", min_value=1.0, value=60000.0, step=1000.0)
+                r10,r11 = st.columns(2)
+                title = r10.text_input("Job title")
+                dep_name = r11.selectbox("Department", list(dmap.keys()))
+                hr_name = st.selectbox("HR manager", list(hmap.keys()))
+                if st.form_submit_button("Create employee", use_container_width=True):
+                    if not first.strip() or not last.strip() or not email.strip() or not title.strip():
+                        st.error("First name, last name, email and job title are required.")
+                    else:
+                        ok,msg=add_employee(first,last,gender,str(dob),email,phone,address,str(hire),
+                                             salary,title,dmap[dep_name],hmap[hr_name])
+                        flash(ok,msg)
+                        if ok: st.rerun()
+
+        with st.expander("✏️ Edit employee"):
+            if not filtered.empty:
+                edit_id = int(st.selectbox("Employee", filtered.employee_id.tolist(), format_func=lambda x: filtered.loc[filtered.employee_id==x,"full_name"].iloc[0]))
+                e = filtered[filtered.employee_id==edit_id].iloc[0]
+                with st.form("edit_employee"):
+                    a,b,c=st.columns(3)
+                    f=a.text_input("First name", e.first_name)
+                    l=b.text_input("Last name", e.last_name)
+                    g=c.selectbox("Gender",["Female","Male","Non-binary","Prefer not to say"], index=max(0,["Female","Male","Non-binary","Prefer not to say"].index(str(e.gender)) if str(e.gender) in ["Female","Male","Non-binary","Prefer not to say"] else 0))
+                    a,b,c=st.columns(3)
+                    edob=a.date_input("DOB", pd.to_datetime(e.date_of_birth).date())
+                    em=b.text_input("Email", e.email)
+                    ph=c.text_input("Phone", e.phone_number)
+                    a,b,c=st.columns(3)
+                    ad=a.text_input("Address", e.address)
+                    hd=b.date_input("Hire date", pd.to_datetime(e.hire_date).date())
+                    sal=c.number_input("Salary", min_value=1.0, value=float(e.salary), step=1000.0)
+                    a,b=st.columns(2)
+                    jt=a.text_input("Job title", e.job_title)
+                    dn=b.selectbox("Department", list(dmap.keys()), index=list(dmap.keys()).index(e.department_name))
+                    hn=st.selectbox("HR manager", list(hmap.keys()), index=list(hmap.keys()).index(e.hr_manager))
+                    if st.form_submit_button("Save changes", use_container_width=True):
+                        ok,msg=update_employee(edit_id,f,l,g,str(edob),em,ph,ad,str(hd),sal,jt,dmap[dn],hmap[hn])
+                        flash(ok,msg)
+                        if ok: st.rerun()
+
+        if require_role("Administrator") and not filtered.empty:
+            with st.expander("🗑️ Delete employee"):
+                delete_id = st.selectbox("Employee to delete", filtered.employee_id.tolist(), format_func=lambda x: filtered.loc[filtered.employee_id==x,"full_name"].iloc[0], key="delete_emp")
+                st.warning("This deletes the employee record and dependent bridge/attendance/review/training records according to the FK rules.")
+                if st.button("Delete selected employee", type="secondary"):
+                    ok,msg=delete_employee(int(delete_id))
+                    flash(ok,msg)
+                    if ok: st.rerun()
+
+# ---------------------------------------------------------------------------
+# Departments
+# ---------------------------------------------------------------------------
+elif menu == "🏛️ Departments":
+    st.markdown("## 🏛️ Departments & Managers")
+    d = get_departments()
+    c1,c2,c3=st.columns(3)
+    c1.metric("Departments",len(d))
+    c2.metric("Allocated budget",f"${d.budget.sum():,.0f}" if not d.empty else "$0")
+    c3.metric("Payroll",f"${d.total_payroll.sum():,.0f}" if not d.empty else "$0")
+    render_df(d.rename(columns={
+        "department_id":"ID","department_name":"Department","location":"Location",
+        "budget":"Budget","manager_name":"Manager","employee_count":"Headcount",
+        "total_payroll":"Payroll","budget_utilized_pct":"Payroll / Budget %"
+    }))
+    if not d.empty:
+        fig=px.bar(d,x="department_name",y="budget_utilized_pct",labels={"department_name":"Department","budget_utilized_pct":"Payroll / Budget %"})
+        st.plotly_chart(fig,use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Projects
+# ---------------------------------------------------------------------------
+elif menu == "💼 Projects":
+    st.markdown("## 💼 Projects & Staffing")
+    p = get_projects()
+    if not p.empty:
+        c1,c2,c3=st.columns(3)
+        c1.metric("Projects",len(p))
+        c2.metric("Ongoing",int((p.status=="Ongoing").sum()))
+        c3.metric("Hours logged",f"{p.total_hours_worked.sum():,.0f}")
+        render_df(p.rename(columns={
+            "project_id":"ID","project_name":"Project","client_name":"Client","budget":"Budget",
+            "status":"Status","start_date":"Start","end_date":"End","department_name":"Owner",
+            "team_size":"Team","total_hours_worked":"Hours"
+        }))
+        if require_role("HR Manager"):
+            with st.expander("➕ Create project"):
+                d,dmap=dept_map()
+                with st.form("project_form"):
+                    a,b=st.columns(2)
+                    name=a.text_input("Project name")
+                    client=b.text_input("Client")
+                    a,b,c=st.columns(3)
+                    start=a.date_input("Start",dt.date.today())
+                    end=b.date_input("End",dt.date.today()+dt.timedelta(days=90))
+                    budget=c.number_input("Budget",min_value=0.0,value=100000.0,step=5000.0)
+                    a,b=st.columns(2)
+                    status= a.selectbox("Status",["Planning","Ongoing","Completed","Cancelled"])
+                    owner=b.selectbox("Department",list(dmap.keys()))
+                    if st.form_submit_button("Create project",use_container_width=True):
+                        ok,msg=add_project(name,str(start),str(end),budget,client,status,dmap[owner])
+                        flash(ok,msg)
+                        if ok: st.rerun()
+
+        with st.expander("👥 Project staffing"):
+            project_name=st.selectbox("Project",p.project_name.tolist())
+            pid=int(p.loc[p.project_name==project_name,"project_id"].iloc[0])
+            assignments=get_project_assignments(pid)
+            render_df(assignments[["employee_name","job_title","employee_role","hours_worked","assigned_date"]]
+                      if not assignments.empty else assignments, 280)
+            if require_role("HR Manager"):
+                emp,emap=employee_maps()
+                with st.form("assign_project"):
+                    a,b,c,d=st.columns(4)
+                    en=a.selectbox("Employee",list(emap.keys()))
+                    role=a.text_input("Project role",key="project_role")
+                    hours=b.number_input("Hours worked",0.0,2000.0,40.0,5.0)
+                    assigned=c.date_input("Assigned date",dt.date.today())
+                    if st.form_submit_button("Assign",use_container_width=True):
+                        if not role.strip():
+                            st.error("Project role is required.")
+                        else:
+                            ok,msg=assign_employee_to_project(emap[en],pid,str(assigned),role,hours)
+                            flash(ok,msg)
+                            if ok: st.rerun()
+                new_status=st.selectbox("Update project status",["Planning","Ongoing","Completed","Cancelled"],key="proj_status")
+                if st.button("Save project status"):
+                    ok,msg=update_project_status(pid,new_status)
+                    flash(ok,msg)
+                    if ok: st.rerun()
+
+# ---------------------------------------------------------------------------
+# Attendance & Leave
+# ---------------------------------------------------------------------------
+elif menu == "⏱️ Attendance & Leave":
+    st.markdown("## ⏱️ Attendance & Leave")
+    tab1,tab2=st.tabs(["Attendance","Leave"])
+    with tab1:
+        att=get_attendance_records()
+        a,b,c,d=st.columns(4)
+        a.metric("Logs",len(att))
+        b.metric("Present / Remote",int(att.attendance_status.isin(["Present","Remote"]).sum()) if not att.empty else 0)
+        c.metric("Absent",int((att.attendance_status=="Absent").sum()) if not att.empty else 0)
+        d.metric("Avg hours",f"{att.work_hours.mean():.1f}" if not att.empty else "0")
+        filter_by_date = st.checkbox("Filter by date", value=False)
+        date_filter = st.date_input("Attendance date", value=dt.date.today()) if filter_by_date else None
+        att_view = get_attendance_records(str(date_filter)) if date_filter else att
+        render_df(att_view.rename(columns={
+            "attendance_id":"ID","date":"Date","employee_name":"Employee","department_name":"Department",
+            "check_in_time":"Check-in","check_out_time":"Check-out","work_hours":"Hours","attendance_status":"Status"
+        }))
+        download_df(att_view,"attendance.csv")
+        if require_role("HR Manager"):
+            with st.expander("➕ Log attendance"):
+                emp,emap=employee_maps()
+                with st.form("attendance_form"):
+                    a,b,c,d=st.columns(4)
+                    en=a.selectbox("Employee",list(emap.keys()))
+                    day=b.date_input("Date",dt.date.today())
+                    cin=c.text_input("Check-in","09:00:00")
+                    cout=c.text_input("Check-out","17:30:00")
+                    hours=d.number_input("Work hours",0.0,24.0,8.5,.5)
+                    status=a.selectbox("Status",["Present","Remote","Half-Day","On-Leave","Absent"])
+                    if st.form_submit_button("Record attendance",use_container_width=True):
+                        ok,msg=log_attendance(emap[en],str(day),None if status in ["Absent","On-Leave"] else cin,
+                                              None if status in ["Absent","On-Leave"] else cout,hours,status)
+                        flash(ok,msg)
+                        if ok: st.rerun()
+    with tab2:
+        leave=get_leave_requests()
+        pending=leave[leave.approval_status=="Pending"] if not leave.empty else leave
+        c1,c2,c3=st.columns(3)
+        c1.metric("Requests",len(leave)); c2.metric("Pending",len(pending)); c3.metric("Approved",int((leave.approval_status=="Approved").sum()) if not leave.empty else 0)
+        if not pending.empty and require_role("HR Manager"):
+            st.subheader("Pending approvals")
+            for _,r in pending.iterrows():
+                x1,x2,x3=st.columns([3,2,1])
+                x1.markdown(f"**{r.employee_name}** • {r.leave_type}")
+                x1.caption(r.reason or "No reason supplied")
+                x2.write(f"{r.start_date} → {r.end_date}")
+                if x3.button("Approve",key=f"approve_{r.leave_id}"):
+                    ok,msg=update_leave_status(int(r.leave_id),"Approved"); flash(ok,msg); st.rerun()
+                if x3.button("Reject",key=f"reject_{r.leave_id}"):
+                    ok,msg=update_leave_status(int(r.leave_id),"Rejected"); flash(ok,msg); st.rerun()
+        render_df(leave.rename(columns={
+            "leave_id":"ID","employee_name":"Employee","department_name":"Department",
+            "leave_type":"Type","start_date":"From","end_date":"To","reason":"Reason","approval_status":"Status"
+        }))
+        download_df(leave,"leave_requests.csv")
+        if require_role("HR Manager"):
+            with st.expander("➕ Submit leave request"):
+                emp,emap=employee_maps()
+                with st.form("leave_form"):
+                    a,b,c=st.columns(3)
+                    en=a.selectbox("Employee",list(emap.keys()))
+                    lt=b.selectbox("Leave type",["Annual","Sick","Casual","Unpaid"])
+                    reason=c.text_input("Reason")
+                    a,b=st.columns(2)
+                    start=a.date_input("From",dt.date.today())
+                    end=b.date_input("To",dt.date.today())
+                    if st.form_submit_button("Submit leave",use_container_width=True):
+                        if end < start: st.error("End date cannot be before start date.")
+                        else:
+                            ok,msg=add_leave_request(emap[en],lt,str(start),str(end),reason); flash(ok,msg)
+                            if ok: st.rerun()
+
+# ---------------------------------------------------------------------------
+# Payroll
+# ---------------------------------------------------------------------------
+elif menu == "💰 Payroll":
+    st.markdown("## 💰 Payroll & Compensation")
+    pay=get_payroll_records()
+    emp=get_employees()
+    c1,c2,c3,c4=st.columns(4)
+    c1.metric("Net paid",f"${pay.net_salary.sum():,.0f}" if not pay.empty else "$0")
+    c2.metric("Basic",f"${pay.basic_salary.sum():,.0f}" if not pay.empty else "$0")
+    c3.metric("Allowances",f"${pay.allowances.sum():,.0f}" if not pay.empty else "$0")
+    c4.metric("Deductions",f"${pay.deductions.sum():,.0f}" if not pay.empty else "$0")
+    render_df(pay.rename(columns={
+        "payroll_id":"ID","payment_date":"Payment Date","employee_name":"Employee",
+        "department_name":"Department","basic_salary":"Basic","allowances":"Allowances",
+        "deductions":"Deductions","net_salary":"Net Salary"
+    }))
+    download_df(pay,"payroll.csv")
+    if not emp.empty and not pay.empty:
+        by_dept=pay.groupby("department_name",as_index=False).net_salary.sum()
+        fig=px.bar(by_dept,x="department_name",y="net_salary",labels={"net_salary":"Net salary paid","department_name":"Department"})
+        st.plotly_chart(fig,use_container_width=True)
+    if require_role("Administrator"):
+        with st.expander("➕ Add payroll record"):
+            _,emap=employee_maps()
+            with st.form("payroll_form"):
+                a,b,c,d=st.columns(4)
+                en=a.selectbox("Employee",list(emap.keys()))
+                basic=b.number_input("Basic salary",1.0,10000000.0,50000.0,1000.0)
+                allowances=c.number_input("Allowances",0.0,1000000.0,5000.0,500.0)
+                deductions=d.number_input("Deductions",0.0,1000000.0,3000.0,500.0)
+                day=st.date_input("Payment date",dt.date.today())
+                if st.form_submit_button("Create payroll record",use_container_width=True):
+                    ok,msg=add_payroll_record(emap[en],basic,allowances,deductions,str(day)); flash(ok,msg)
+                    if ok: st.rerun()
+
+# ---------------------------------------------------------------------------
+# Performance & Training
+# ---------------------------------------------------------------------------
 elif menu == "🌟 Performance & Training":
-    st.markdown("<div class='section-header'>🌟 Performance Reviews & Professional Development</div>", unsafe_allow_html=True)
-    
-    t1, t2 = st.tabs(["🏆 Performance Appraisals", "🎓 Corporate Training Catalog"])
+    st.markdown("## 🌟 Performance & Training")
+    tab1,tab2=st.tabs(["Performance","Training"])
+    with tab1:
+        reviews=get_performance_reviews()
+        c1,c2=st.columns([1,2])
+        with c1:
+            if not reviews.empty:
+                counts=reviews.rating.value_counts().sort_index().reset_index()
+                fig=px.bar(counts,x="rating",y="count",labels={"rating":"Rating","count":"Reviews"})
+                st.plotly_chart(fig,use_container_width=True)
+        with c2:
+            render_df(reviews.rename(columns={
+                "review_id":"ID","review_date":"Date","employee_name":"Employee",
+                "job_title":"Role","department_name":"Department","reviewer_name":"Reviewer",
+                "rating":"Rating","comments":"Feedback"
+            }))
+        download_df(reviews,"performance_reviews.csv")
+        if require_role("HR Manager"):
+            with st.expander("➕ Add performance review"):
+                _,emap=employee_maps()
+                with st.form("review_form"):
+                    en=st.selectbox("Employee",list(emap.keys()))
+                    reviewer=st.text_input("Reviewer")
+                    rating=st.slider("Rating",1,5,4)
+                    comments=st.text_area("Feedback")
+                    if st.form_submit_button("Save review",use_container_width=True):
+                        if not reviewer.strip(): st.error("Reviewer is required.")
+                        else:
+                            ok,msg=add_performance_review(emap[en],reviewer,str(dt.date.today()),rating,comments); flash(ok,msg)
+                            if ok: st.rerun()
+    with tab2:
+        train=get_trainings()
+        c1,c2,c3=st.columns(3)
+        c1.metric("Programs",len(train)); c2.metric("Enrollments",int(train.enrolled_count.sum()) if not train.empty else 0)
+        c3.metric("Avg score",f"{train.avg_assessment_score.mean():.1f}" if not train.empty and train.avg_assessment_score.notna().any() else "—")
+        render_df(train.rename(columns={
+            "training_id":"ID","training_name":"Course","trainer_name":"Trainer",
+            "training_type":"Type","cost":"Cost","start_date":"Start","end_date":"End",
+            "enrolled_count":"Enrolled","avg_assessment_score":"Avg score"
+        }))
+        download_df(train,"training_catalog.csv")
+        if not train.empty:
+            selected=st.selectbox("Inspect course",train.training_name.tolist())
+            tid=int(train.loc[train.training_name==selected,"training_id"].iloc[0])
+            enroll=get_training_enrollments(tid)
+            render_df(enroll[["employee_name","completion_status","score"]].rename(columns={
+                "employee_name":"Employee","completion_status":"Status","score":"Score"
+            }),250)
+            if require_role("HR Manager"):
+                _,emap=employee_maps()
+                with st.form("enroll_form"):
+                    en=st.selectbox("Employee",list(emap.keys()))
+                    status=st.selectbox("Completion status",["Enrolled","In Progress","Completed"])
+                    score=st.number_input("Score (optional)",0.0,100.0,0.0,1.0)
+                    if st.form_submit_button("Enroll employee",use_container_width=True):
+                        ok,msg=enroll_employee_training(emap[en],tid,status,None if score==0 else score); flash(ok,msg)
+                        if ok: st.rerun()
+        if require_role("Administrator"):
+            with st.expander("➕ Create training program"):
+                with st.form("training_form"):
+                    a,b=st.columns(2); name=a.text_input("Training name"); trainer=b.text_input("Trainer")
+                    a,b,c=st.columns(3)
+                    start=a.date_input("Start",dt.date.today()); end=b.date_input("End",dt.date.today()+dt.timedelta(days=1))
+                    typ=c.selectbox("Type",["Technical","Compliance","Leadership","Soft Skills"])
+                    cost=st.number_input("Cost",0.0,1000000.0,1000.0,100.0)
+                    if st.form_submit_button("Create training",use_container_width=True):
+                        ok,msg=add_training(name,trainer,str(start),str(end),typ,cost); flash(ok,msg)
+                        if ok: st.rerun()
 
-    with t1:
-        reviews_df = get_performance_reviews()
-        col1, col2 = st.columns([2, 3])
-        with col1:
-            st.subheader("Rating Distribution (1 - 5 Stars)")
-            fig_ratings = px.bar(
-                reviews_df["rating"].value_counts().sort_index().reset_index(),
-                x="rating",
-                y="count",
-                labels={"rating": "Rating (Stars)", "count": "Evaluations"},
-                color="rating",
-                color_continuous_scale="Blues"
-            )
-            st.plotly_chart(fig_ratings, use_container_width=True)
-        with col2:
-            st.subheader("Recent Managerial Reviews")
-            st.dataframe(
-                reviews_df[["employee_name", "job_title", "reviewer_name", "rating", "comments", "review_date"]].rename(columns={
-                    "employee_name": "Employee",
-                    "job_title": "Role",
-                    "reviewer_name": "Reviewer",
-                    "rating": "Score",
-                    "comments": "Feedback",
-                    "review_date": "Date"
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
-
-        with st.expander("➕ Submit New Performance Evaluation", expanded=False):
-            emp_all = get_employees()
-            emp_dict = {row["full_name"]: row["employee_id"] for _, row in emp_all.iterrows()}
-            with st.form("new_review_form"):
-                r1, r2, r3 = st.columns(3)
-                with r1:
-                    rev_emp = st.selectbox("Employee Being Evaluated", list(emp_dict.keys()))
-                with r2:
-                    reviewer = st.text_input("Reviewer Name", placeholder="e.g. Dr. Robert Vance")
-                with r3:
-                    rating = st.slider("Rating (1 = Unsatisfactory, 5 = Outstanding)", 1, 5, 4)
-                comments = st.text_area("Manager Feedback and Objectives", placeholder="Key achievements and development goals...")
-
-                if st.form_submit_button("Record Evaluation"):
-                    ok, msg = add_performance_review(emp_dict[rev_emp], reviewer, str(datetime.date.today()), rating, comments)
-                    if ok:
-                        st.success("Performance evaluation saved successfully!")
-                        st.rerun()
+# ---------------------------------------------------------------------------
+# Recruitment
+# ---------------------------------------------------------------------------
+elif menu == "🎯 Recruitment":
+    st.markdown("## 🎯 Recruitment Funnel")
+    rec=get_recruitment_candidates()
+    c1,c2,c3,c4=st.columns(4)
+    total=len(rec)
+    c1.metric("Candidates",total)
+    c2.metric("Interviews completed",int((rec.interview_status=="Completed").sum()) if total else 0)
+    c3.metric("Offers accepted",int((rec.offer_status=="Accepted").sum()) if total else 0)
+    accepted=int((rec.offer_status=="Accepted").sum()) if total else 0
+    c4.metric("Conversion",f"{accepted/total*100:.1f}%" if total else "0%")
+    render_df(rec.rename(columns={
+        "recruitment_id":"ID","candidate_name":"Candidate","position_applied":"Position",
+        "interview_date":"Interview","interview_status":"Interview Status",
+        "offer_status":"Offer Status","coordinator":"HR Coordinator"
+    }))
+    download_df(rec,"recruitment.csv")
+    if require_role("HR Manager"):
+        with st.expander("➕ Add candidate"):
+            _,hmap=hr_map()
+            with st.form("candidate_form"):
+                a,b,c=st.columns(3)
+                name=a.text_input("Candidate name"); position=b.text_input("Position")
+                day=c.date_input("Interview date",dt.date.today())
+                a,b,c=st.columns(3)
+                ist=a.selectbox("Interview status",["Scheduled","Completed","Cancelled"])
+                ost=b.selectbox("Offer status",["Pending","Accepted","Rejected"])
+                hrn=c.selectbox("Coordinator",list(hmap.keys()))
+                if st.form_submit_button("Add candidate",use_container_width=True):
+                    if not name.strip() or not position.strip(): st.error("Candidate and position are required.")
                     else:
-                        st.error(msg)
+                        ok,msg=add_recruitment_candidate(name,position,str(day),ist,ost,hmap[hrn]); flash(ok,msg)
+                        if ok: st.rerun()
+        if not rec.empty:
+            with st.expander("✏️ Update candidate status"):
+                rid=st.selectbox("Candidate",rec.recruitment_id.tolist(),format_func=lambda x: rec.loc[rec.recruitment_id==x,"candidate_name"].iloc[0])
+                rr=rec[rec.recruitment_id==rid].iloc[0]
+                a,b=st.columns(2)
+                ist=a.selectbox("Interview",["Scheduled","Completed","Cancelled"],index=["Scheduled","Completed","Cancelled"].index(rr.interview_status))
+                ost=b.selectbox("Offer",["Pending","Accepted","Rejected"],index=["Pending","Accepted","Rejected"].index(rr.offer_status))
+                if st.button("Save status"):
+                    ok,msg=update_recruitment_status(int(rid),ist,ost); flash(ok,msg)
+                    if ok: st.rerun()
 
-    with t2:
-        train_df = get_trainings()
-        st.subheader("Corporate Training Programs")
-        st.dataframe(
-            train_df.rename(columns={
-                "training_id": "ID",
-                "training_name": "Course Title",
-                "trainer_name": "Lead Trainer",
-                "training_type": "Category",
-                "cost": "Program Cost ($)",
-                "enrolled_count": "Employees Enrolled",
-                "avg_assessment_score": "Average Test Score"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-
-        st.markdown("---")
-        st.subheader("Employee Course Completion & Assessment Scores (Bridge: `EMPLOYEE_TRAINING`)")
-        train_options = {row["training_name"]: row["training_id"] for _, row in train_df.iterrows()}
-        selected_course = st.selectbox("Inspect Enrollments for Course", list(train_options.keys()))
-        enroll_df = get_training_enrollments(training_id=train_options[selected_course])
-        if enroll_df.empty:
-            st.info("No enrollment records found for this training session.")
+# ---------------------------------------------------------------------------
+# Schema explorer
+# ---------------------------------------------------------------------------
+elif menu == "🗄️ Schema Explorer":
+    st.markdown("## 🗄️ Schema Explorer")
+    meta=get_schema_metadata()
+    rel=get_relationships()
+    c1,c2,c3=st.columns(3)
+    c1.metric("Tables",meta.table_name.nunique() if not meta.empty else 0)
+    c2.metric("Columns",len(meta))
+    c3.metric("Foreign keys",len(rel))
+    tabs=st.tabs(["Tables & columns","Relationships","Table data"])
+    with tabs[0]:
+        if not meta.empty:
+            table_counts=meta.groupby("table_name").size().reset_index(name="columns")
+            selected=st.selectbox("Inspect table",table_counts.table_name.tolist())
+            st.dataframe(meta[meta.table_name==selected],use_container_width=True,hide_index=True)
+    with tabs[1]:
+        if rel.empty: st.info("No foreign-key metadata found.")
         else:
-            st.dataframe(
-                enroll_df[["employee_name", "completion_status", "score"]].rename(columns={
-                    "employee_name": "Enrolled Employee",
-                    "completion_status": "Status",
-                    "score": "Final Assessment Score (/100)"
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
+            st.dataframe(rel,use_container_width=True,hide_index=True)
+            # compact relationship matrix
+            nodes=sorted(set(rel.child_table.tolist()+rel.parent_table.tolist()))
+            node_index={n:i for i,n in enumerate(nodes)}
+            fig=go.Figure()
+            for _,r in rel.iterrows():
+                x=[node_index[r.child_table],node_index[r.parent_table]]
+                y=[0,0]
+                fig.add_trace(go.Scatter(x=x,y=y,mode="lines",line=dict(width=1),showlegend=False,hovertext=f"{r.child_table}.{r.child_column} → {r.parent_table}.{r.parent_column}",hoverinfo="text"))
+            fig.add_trace(go.Scatter(
+                x=list(range(len(nodes))),y=[0]*len(nodes),mode="markers+text",
+                text=nodes,textposition="top center",marker=dict(size=18),showlegend=False
+            ))
+            fig.update_layout(height=260,xaxis=dict(showticklabels=False),yaxis=dict(visible=False),margin=dict(l=20,r=20,t=30,b=40))
+            st.plotly_chart(fig,use_container_width=True)
+    with tabs[2]:
+        tables=sorted(meta.table_name.unique().tolist()) if not meta.empty else []
+        if tables:
+            table=st.selectbox("Table",tables)
+            limit=st.slider("Rows",10,500,100,10)
+            data=get_table_data(table,limit)
+            render_df(data,420)
+            download_df(data,f"{table}.csv")
 
-
-# -----------------------------------------------------------------------------
-# 8. RECRUITMENT PIPELINE
-# -----------------------------------------------------------------------------
-elif menu == "🎯 Recruitment Funnel":
-    st.markdown("<div class='section-header'>🎯 Talent Acquisition & Candidate Pipeline</div>", unsafe_allow_html=True)
-    
-    rec_df = get_recruitment_candidates()
-    
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Total Candidates Screened", len(rec_df))
-    with c2:
-        comp_int = len(rec_df[rec_df["interview_status"] == "Completed"])
-        st.metric("Interviews Completed", comp_int)
-    with c3:
-        offers_acc = len(rec_df[rec_df["offer_status"] == "Accepted"])
-        st.metric("Offers Accepted", offers_acc)
-    with c4:
-        conv_rate = (offers_acc / len(rec_df) * 100) if len(rec_df) > 0 else 0
-        st.metric("Offer Conversion Rate", f"{conv_rate:.1f}%")
-
-    st.markdown("---")
-    st.subheader("Candidate Records (`RECRUITMENT` Entity)")
-    st.dataframe(
-        rec_df.rename(columns={
-            "recruitment_id": "Applicant ID",
-            "candidate_name": "Candidate Full Name",
-            "position_applied": "Target Position",
-            "interview_date": "Interview Date",
-            "interview_status": "Interview State",
-            "offer_status": "Offer Status",
-            "coordinator": "Assigned HR Lead"
-        }),
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-# -----------------------------------------------------------------------------
-# 9. INTERACTIVE SQL STUDIO
-# -----------------------------------------------------------------------------
-elif menu == "⚡ Interactive SQL Studio":
-    st.markdown("<div class='section-header'>⚡ Interactive SQL Studio (Graded Assignment Console)</div>", unsafe_allow_html=True)
-    st.info("Run pre-written complex queries demonstrating **JOINs, Subqueries, Window Functions (`DENSE_RANK`), and Aggregations**, or write custom SQL statements live against the database.")
-
-    selected_query_title = st.selectbox("Select a Graded Assignment Query to Load:", list(COMPLEX_QUERIES_CATALOG.keys()))
-    catalog_entry = COMPLEX_QUERIES_CATALOG[selected_query_title]
-
-    st.markdown(f"**Query Objective**: {catalog_entry['description']}")
-    
-    # Pre-populate code area
-    query_code = st.text_area("SQL Statement (Editable)", value=catalog_entry["sql"], height=240)
-
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        execute_btn = st.button("🚀 Execute SQL", use_container_width=True)
-
-    if execute_btn:
+# ---------------------------------------------------------------------------
+# SQL Studio
+# ---------------------------------------------------------------------------
+elif menu == "⚡ SQL Studio":
+    st.markdown("## ⚡ Read-only SQL Studio")
+    st.caption("Borrowed from the other team's stronger DBA workflow: presets, keyboard execution, clear errors and CSV export.")
+    preset_names=list(COMPLEX_QUERIES_CATALOG.keys())
+    preset=st.selectbox("Preset query",["Custom"]+preset_names)
+    default="" if preset=="Custom" else COMPLEX_QUERIES_CATALOG[preset]["sql"]
+    query=st.text_area("SQL",value=default,height=260,placeholder="SELECT ...",key="sql_editor")
+    if preset!="Custom":
+        st.info(COMPLEX_QUERIES_CATALOG[preset]["description"])
+    if st.button("▶ Run query",type="primary"):
         try:
-            res_df = run_query(query_code)
-            st.success(f"Execution Successful! Retrieved **{len(res_df)}** row(s).")
-            st.dataframe(res_df, use_container_width=True)
-
-            # Auto chart if numeric columns present
-            num_cols = res_df.select_dtypes(include=["number"]).columns.tolist()
-            text_cols = res_df.select_dtypes(include=["object", "string"]).columns.tolist()
-            if len(num_cols) >= 1 and len(text_cols) >= 1 and len(res_df) <= 30:
-                with st.expander("📊 Instant Visual Representation", expanded=True):
-                    fig_auto = px.bar(
-                        res_df,
-                        x=text_cols[0],
-                        y=num_cols[0],
-                        title=f"{num_cols[0].replace('_', ' ').title()} by {text_cols[0].replace('_', ' ').title()}",
-                        color=num_cols[0],
-                        color_continuous_scale="Teal"
-                    )
-                    st.plotly_chart(fig_auto, use_container_width=True)
+            q=safe_sql(query)
+            with st.spinner("Executing read-only query..."):
+                result=run_query(q)
+            st.success(f"Query executed • {len(result):,} row(s)")
+            render_df(result,460)
+            download_df(result,"sql_query_result.csv")
+            if not result.empty:
+                numeric=result.select_dtypes(include="number").columns.tolist()
+                text_cols=result.select_dtypes(include=["object","string"]).columns.tolist()
+                if numeric and text_cols and len(result)<=50:
+                    fig=px.bar(result,x=text_cols[0],y=numeric[0])
+                    st.plotly_chart(fig,use_container_width=True)
         except Exception as e:
-            st.error(f"SQL Error: {str(e)}")
+            st.error(str(e))
 
+# ---------------------------------------------------------------------------
+# Reports & Export
+# ---------------------------------------------------------------------------
+elif menu == "📈 Reports & Export":
+    st.markdown("## 📈 Reports & Export")
+    st.caption("This is the other team's report/export pattern adapted to the Employee & HR domain.")
+    k=get_executive_kpis()
+    c1,c2,c3,c4=st.columns(4)
+    c1.metric("Employees",k.get("total_employees",0))
+    c2.metric("Payroll",f"${k.get('total_payroll',0):,.0f}")
+    c3.metric("Avg salary",f"${k.get('avg_salary',0):,.0f}")
+    c4.metric("Attendance",f"{k.get('attendance_rate',0):.1f}%")
+    report_tabs=st.tabs(["Workforce","Finance","Talent","Operations"])
+    emp=get_employees(); pay=get_payroll_records(); perf=get_performance_reviews()
+    rec=get_recruitment_candidates(); train=get_trainings(); att=get_attendance_records(); leave=get_leave_requests()
+    with report_tabs[0]:
+        download_df(emp,"workforce_report.csv","⬇️ Workforce CSV")
+        render_df(emp[["employee_id","full_name","job_title","department_name","salary","hire_date","hr_manager"]])
+    with report_tabs[1]:
+        download_df(pay,"payroll_report.csv","⬇️ Payroll CSV")
+        if not pay.empty:
+            by_dept=pay.groupby("department_name",as_index=False).agg(net_salary=("net_salary","sum"),deductions=("deductions","sum"))
+            render_df(by_dept)
+    with report_tabs[2]:
+        download_df(perf,"performance_report.csv","⬇️ Performance CSV")
+        download_df(train,"training_report.csv","⬇️ Training CSV")
+        download_df(rec,"recruitment_report.csv","⬇️ Recruitment CSV")
+    with report_tabs[3]:
+        download_df(att,"attendance_report.csv","⬇️ Attendance CSV")
+        download_df(leave,"leave_report.csv","⬇️ Leave CSV")
 
-# -----------------------------------------------------------------------------
-# 10. 3NF NORMALIZATION THEORY
-# -----------------------------------------------------------------------------
-elif menu == "📜 3NF Normalization Theory":
-    st.markdown("<div class='section-header'>📜 Relational Normalization & Functional Dependency Proof</div>", unsafe_allow_html=True)
-    
+# ---------------------------------------------------------------------------
+# 3NF
+# ---------------------------------------------------------------------------
+elif menu == "📜 3NF / Functional Dependencies":
+    st.markdown("## 📜 3NF & Functional Dependency Proof")
     st.markdown("""
-    ### 1. Attribute Dictionary
-    | Symbol | Attribute Name | Semantic Meaning |
-    |---|---|---|
-    | **$A$** | `Employee_ID` | Unique employee surrogate key |
-    | **$B$** | `Department_ID` | Unique department surrogate key |
-    | **$C$** | `Department_Name` | Human-readable department name |
-    | **$D$** | `Manager_ID` | Manager identifier for department |
-    | **$E$** | `Manager_Name` | Manager full name |
-    | **$F$** | `Project_ID` | Project unique identifier |
-    | **$G$** | `Project_Name` | Project title |
-    | **$H$** | `Project_Budget` | Total capital allocated to project |
-    | **$I$** | `Employee_Role` | Staff role on a specific project |
-    | **$J$** | `Hours_Worked` | Cumulative hours logged on a project |
+    **Core dependencies**
+
+    - `Employee_ID → Department_ID, HR_ID, employee attributes`
+    - `Department_ID → Department_Name, Location, Budget, Manager_Name`
+    - `Project_ID → Project_Name, Budget, Client_Name, Status, Department_ID`
+    - `{Employee_ID, Project_ID} → Employee_Role, Hours_Worked`
+    - `{Employee_ID, Training_ID} → Completion_Status, Score`
+    - `HR_ID → HR manager attributes`
+
+    **1NF:** attributes are atomic and M:N relationships are represented by bridge tables.
+
+    **2NF:** attributes of `EMPLOYEE_PROJECT` and `EMPLOYEE_TRAINING` depend on their complete composite keys.
+
+    **3NF:** department and HR-manager facts are separated from `EMPLOYEE`, removing transitive dependencies such as
+    `Employee_ID → Department_ID → Department_Name`.
+
+    **Result:** the core academic schema remains decomposed into the 12 normalized entities already present in the project.
     """)
-
-    st.markdown("---")
-    st.markdown("""
-    ### 2. Functional Dependency Set ($F$)
-    From the assignment problem statement:
-    1. **$A \\to B$**: Each employee belongs to exactly one department.
-    2. **$B \\to C$**: Department ID uniquely identifies Department Name.
-    3. **$B \\to D$**: Department ID uniquely identifies Manager ID.
-    4. **$D \\to E$**: Manager ID uniquely identifies Manager Name.
-    5. **$F \\to G$**: Project ID uniquely identifies Project Name.
-    6. **$F \\to H$**: Project ID uniquely identifies Project Budget.
-    7. **$AF \\to I$**: Employee and Project jointly identify the Employee Role on that project.
-    8. **$AF \\to J$**: Employee and Project jointly identify the Hours Worked.
-    9. **$A \\to D$**: Employee transitively identifies Department Manager ($A \\to B$ and $B \\to D$).
-    10. **$AF \\to B$**: Employee-project assignment determines Department ($A \\to B$ via Augmentation).
-    """)
-
-    st.markdown("---")
-    st.markdown(r"""
-    ### 3. Normalization Progression
-
-    #### 🟢 First Normal Form (1NF)
-    - **Rule**: Atomic attributes, unique row identities, and no repeating groups or multivalued attributes.
-    - **Implementation**: The $M:N$ relationships between `EMPLOYEE` and `PROJECT`, as well as `EMPLOYEE` and `TRAINING`, are decomposed into the dedicated associative relations `EMPLOYEE_PROJECT` and `EMPLOYEE_TRAINING`.
-
-    #### 🟢 Second Normal Form (2NF)
-    - **Rule**: Relation is in 1NF, and **no partial dependencies** exist on composite keys.
-    - **Implementation**: In `EMPLOYEE_PROJECT(Employee_ID, Project_ID)`, the attributes `Employee_Role` ($I$) and `Hours_Worked` ($J$) depend on the **entire composite key** $\{A, F\}$. The project-specific attributes ($G$: `Project_Name`, $H$: `Project_Budget`) depend only on $F$, so they are cleanly isolated in the independent `PROJECT` entity.
-
-    #### 🟢 Third Normal Form (3NF)
-    - **Rule**: Relation is in 2NF, and **no transitive dependencies** exist ($X \\to Y$ where $X$ is not a superkey).
-    - **Implementation**: In `EMPLOYEE`, having `Department_Name` ($C$) and `Manager_Name` ($E$) would violate 3NF because $A \\to B \\to C$ and $B \\to D \\to E$. These dependencies are decomposed into separate tables (`DEPARTMENT` and `HR_MANAGER`), leaving only foreign keys (`department_id`, `hr_id`) in `EMPLOYEE`.
-    """)
-
-    st.markdown("---")
-    st.markdown("""
-    ### 4. Relational Schema Summary (12 Normalized Entities)
-    1. **`HR_MANAGER`** (`hr_id` [PK], `hr_name`, `email`, `phone_number`, `designation`, `experience_years`)
-    2. **`DEPARTMENT`** (`department_id` [PK], `department_name`, `location`, `budget`, `manager_name`)
-    3. **`EMPLOYEE`** (`employee_id` [PK], `first_name`, `last_name`, `gender`, `date_of_birth`, `email`, `phone_number`, `address`, `hire_date`, `salary`, `job_title`, `department_id` [FK], `hr_id` [FK])
-    4. **`PROJECT`** (`project_id` [PK], `project_name`, `start_date`, `end_date`, `budget`, `client_name`, `status`, `department_id` [FK])
-    5. **`EMPLOYEE_PROJECT`** (`employee_id` [PK, FK], `project_id` [PK, FK], `assigned_date`, `employee_role`, `hours_worked`)
-    6. **`ATTENDANCE`** (`attendance_id` [PK], `employee_id` [FK], `date`, `check_in_time`, `check_out_time`, `work_hours`, `attendance_status`)
-    7. **`LEAVE`** (`leave_id` [PK], `employee_id` [FK], `leave_type`, `start_date`, `end_date`, `reason`, `approval_status`)
-    8. **`PAYROLL`** (`payroll_id` [PK], `employee_id` [FK], `basic_salary`, `allowances`, `deductions`, `net_salary`, `payment_date`)
-    9. **`PERFORMANCE_REVIEW`** (`review_id` [PK], `employee_id` [FK], `reviewer_name`, `review_date`, `rating`, `comments`)
-    10. **`TRAINING`** (`training_id` [PK], `training_name`, `trainer_name`, `start_date`, `end_date`, `training_type`, `cost`)
-    11. **`EMPLOYEE_TRAINING`** (`employee_id` [PK, FK], `training_id` [PK, FK], `completion_status`, `score`)
-    12. **`RECRUITMENT`** (`recruitment_id` [PK], `candidate_name`, `position_applied`, `interview_date`, `interview_status`, `offer_status`, `hr_id` [FK])
-    """)
+    st.info("Use **Schema Explorer → Relationships** to inspect the actual foreign-key structure from the running database.")

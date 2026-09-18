@@ -220,3 +220,13 @@ Follow these steps to upload this project to your GitHub account:
 
 ## 📄 License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+## UI Upgrade
+
+The dashboard now includes responsive KPI cards, search/filter workflows, employee CRUD,
+project staffing, leave approval, payroll entry, performance/training workflows, recruitment
+management, schema metadata exploration, relationship visualization, read-only SQL Studio,
+CSV exports, and a demo RBAC selector.
+
+See `DEPLOY.md` for Streamlit Community Cloud deployment.

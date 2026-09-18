@@ -347,6 +347,213 @@ def get_hr_managers() -> pd.DataFrame:
     return run_query(query)
 
 
+
+def update_employee(employee_id: int, first_name: str, last_name: str, gender: str,
+                    dob: str, email: str, phone: str, address: str, hire_date: str,
+                    salary: float, job_title: str, department_id: int, hr_id: int):
+    query = """
+        UPDATE employee
+        SET first_name=%s, last_name=%s, gender=%s, date_of_birth=%s, email=%s,
+            phone_number=%s, address=%s, hire_date=%s, salary=%s, job_title=%s,
+            department_id=%s, hr_id=%s
+        WHERE employee_id=%s
+    """
+    return execute_action(query, (first_name, last_name, gender, dob, email, phone,
+                                   address, hire_date, salary, job_title, department_id,
+                                   hr_id, employee_id))
+
+
+def delete_employee(employee_id: int):
+    return execute_action("DELETE FROM employee WHERE employee_id=%s", (employee_id,))
+
+
+def add_project(project_name: str, start_date: str, end_date: Optional[str],
+                budget: float, client_name: str, status: str, department_id: int):
+    query = """
+        INSERT INTO project
+        (project_name, start_date, end_date, budget, client_name, status, department_id)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
+    """
+    return execute_action(query, (project_name, start_date, end_date, budget,
+                                   client_name, status, department_id))
+
+
+def update_project_status(project_id: int, status: str):
+    return execute_action("UPDATE project SET status=%s WHERE project_id=%s",
+                          (status, project_id))
+
+
+def add_leave_request(employee_id: int, leave_type: str, start_date: str,
+                      end_date: str, reason: str):
+    query = """
+        INSERT INTO `leave`
+        (employee_id, leave_type, start_date, end_date, reason, approval_status)
+        VALUES (%s,%s,%s,%s,%s,'Pending')
+    """
+    return execute_action(query, (employee_id, leave_type, start_date, end_date, reason))
+
+
+def add_payroll_record(employee_id: int, basic_salary: float, allowances: float,
+                       deductions: float, payment_date: str):
+    net_salary = float(basic_salary) + float(allowances) - float(deductions)
+    query = """
+        INSERT INTO payroll
+        (employee_id, basic_salary, allowances, deductions, net_salary, payment_date)
+        VALUES (%s,%s,%s,%s,%s,%s)
+    """
+    return execute_action(query, (employee_id, basic_salary, allowances, deductions,
+                                   net_salary, payment_date))
+
+
+def add_training(training_name: str, trainer_name: str, start_date: str,
+                 end_date: str, training_type: str, cost: float):
+    query = """
+        INSERT INTO training
+        (training_name, trainer_name, start_date, end_date, training_type, cost)
+        VALUES (%s,%s,%s,%s,%s,%s)
+    """
+    return execute_action(query, (training_name, trainer_name, start_date, end_date,
+                                   training_type, cost))
+
+
+def enroll_employee_training(employee_id: int, training_id: int,
+                             completion_status: str = "Enrolled",
+                             score: Optional[float] = None):
+    query = """
+        INSERT INTO employee_training
+        (employee_id, training_id, completion_status, score)
+        VALUES (%s,%s,%s,%s)
+    """
+    return execute_action(query, (employee_id, training_id, completion_status, score))
+
+
+def add_recruitment_candidate(candidate_name: str, position_applied: str,
+                              interview_date: str, interview_status: str,
+                              offer_status: str, hr_id: int):
+    query = """
+        INSERT INTO recruitment
+        (candidate_name, position_applied, interview_date, interview_status,
+         offer_status, hr_id)
+        VALUES (%s,%s,%s,%s,%s,%s)
+    """
+    return execute_action(query, (candidate_name, position_applied, interview_date,
+                                   interview_status, offer_status, hr_id))
+
+
+def update_recruitment_status(recruitment_id: int, interview_status: str,
+                              offer_status: str):
+    query = """
+        UPDATE recruitment
+        SET interview_status=%s, offer_status=%s
+        WHERE recruitment_id=%s
+    """
+    return execute_action(query, (interview_status, offer_status, recruitment_id))
+
+
+def get_employee_360(employee_id: int) -> Dict[str, Any]:
+    """Returns a compact 360-degree profile for the selected employee."""
+    emp = run_query("""
+        SELECT e.*, d.department_name, hr.hr_name AS hr_manager
+        FROM employee e
+        JOIN department d ON e.department_id=d.department_id
+        JOIN hr_manager hr ON e.hr_id=hr.hr_id
+        WHERE e.employee_id=%s
+    """, (employee_id,))
+    if emp.empty:
+        return {}
+    return {
+        "employee": emp.iloc[0].to_dict(),
+        "projects": get_project_assignments(),
+        "attendance": get_attendance_records(),
+        "reviews": get_performance_reviews(),
+        "training": get_training_enrollments()
+    }
+
+
+def get_schema_metadata() -> pd.DataFrame:
+    """Returns table/column metadata for the normalized schema."""
+    status = __import__("database.connection", fromlist=["get_connection_status"]).get_connection_status()
+    if status["is_mysql"]:
+        return run_query("""
+            SELECT table_name, column_name, data_type, is_nullable, column_key
+            FROM information_schema.columns
+            WHERE table_schema=%s
+            ORDER BY table_name, ordinal_position
+        """, (__import__("database.connection", fromlist=["DB_CONFIG"]).DB_CONFIG["database"],))
+
+    return run_query("""
+        SELECT m.name AS table_name, p.name AS column_name,
+               CASE WHEN p.type IS NULL OR p.type='' THEN 'TEXT' ELSE p.type END AS data_type,
+               CASE WHEN p."notnull"=1 THEN 'NO' ELSE 'YES' END AS is_nullable,
+               CASE WHEN p.pk>0 THEN 'PRI' ELSE '' END AS column_key
+        FROM sqlite_master m
+        JOIN pragma_table_info(m.name) p
+        WHERE m.type='table' AND m.name NOT LIKE 'sqlite_%'
+        ORDER BY m.name, p.cid
+    """)
+
+
+def get_relationships() -> pd.DataFrame:
+    """Returns foreign-key relationships in a portable format."""
+    status = __import__("database.connection", fromlist=["get_connection_status"]).get_connection_status()
+    if status["is_mysql"]:
+        return run_query("""
+            SELECT
+                kcu.table_name AS child_table,
+                kcu.column_name AS child_column,
+                kcu.referenced_table_name AS parent_table,
+                kcu.referenced_column_name AS parent_column
+            FROM information_schema.key_column_usage kcu
+            WHERE kcu.table_schema=%s
+              AND kcu.referenced_table_name IS NOT NULL
+            ORDER BY kcu.table_name, kcu.column_name
+        """, (__import__("database.connection", fromlist=["DB_CONFIG"]).DB_CONFIG["database"],))
+
+    tables = run_query("""
+        SELECT name AS table_name
+        FROM sqlite_master
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+    """)
+    rows = []
+    for table in tables["table_name"].tolist():
+        safe_table = str(table).replace("'", "''")
+        fk = run_query(f"PRAGMA foreign_key_list('{safe_table}')")
+        for _, r in fk.iterrows():
+            rows.append({
+                "child_table": table,
+                "child_column": r.get("from"),
+                "parent_table": r.get("table"),
+                "parent_column": r.get("to")
+            })
+    return pd.DataFrame(rows, columns=["child_table","child_column","parent_table","parent_column"])
+
+
+def get_table_data(table_name: str, limit: int = 100) -> pd.DataFrame:
+    """Read a table after validating its name against actual schema metadata."""
+    metadata = get_schema_metadata()
+    allowed = set(metadata["table_name"].astype(str).tolist())
+    if table_name not in allowed:
+        raise ValueError("Unknown table.")
+    limit = max(1, min(int(limit), 500))
+    return run_query(f"SELECT * FROM `{table_name}` LIMIT {limit}")
+
+
+def get_report_bundle() -> Dict[str, pd.DataFrame]:
+    """Centralized report queries for the Reports & Export page."""
+    return {
+        "employees": get_employees(),
+        "departments": get_departments(),
+        "projects": get_projects(),
+        "attendance": get_attendance_records(),
+        "leave": get_leave_requests(),
+        "payroll": get_payroll_records(),
+        "performance": get_performance_reviews(),
+        "training": get_trainings(),
+        "recruitment": get_recruitment_candidates(),
+        "relationships": get_relationships()
+    }
+
 COMPLEX_QUERIES_CATALOG = {
     "1. Department Budget vs Salary Spend": {
         "description": "Calculates total departmental budget, employee headcount, annual payroll cost, and budget utilization percentage.",
